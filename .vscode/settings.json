@@ -1,0 +1,16 @@
+{
+    "rust-analyzer.cargo.target": "i686-unknown-none.json",
+    "rust-analyzer.check.command": "check",
+    "rust-analyzer.check.extraArgs": [
+        "--target",
+        "i686-unknown-none.json",
+        "-Z",
+        "build-std=core,compiler_builtins"
+    ],
+    "rust-analyzer.cargo.extraArgs": [
+        "-Z",
+        "build-std=core,compiler_builtins"
+    ],
+    "rust-analyzer.rustc.source": "discover",
+    "rust-analyzer.cargo.noDefaultFeatures": false
+}

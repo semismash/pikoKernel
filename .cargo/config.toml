@@ -1,0 +1,7 @@
+[build]
+target = "i686-unknown-none.json" # default to 32bit target triple
+
+[unstable]
+build-std = ["core"] # recompile core for 32-bit
+build-std-features = ["compiler-builtins-mem"]
+json-target-spec = true
