@@ -2,6 +2,7 @@
 #![allow(non_snake_case)]
 
 mod panichandler;
+mod vga;
 
 const VGA_BUFFER: *mut u8 = 0xb8000 as *mut u8;
 
