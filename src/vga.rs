@@ -102,12 +102,19 @@ impl VGABuffer {
     fn write_char_to_buf(&mut self, char: ScreenCharacter) -> Result<(), VGAError> {
         if self.get_offset() < BUFFER_CAPACITY {
             unsafe {
-                if self.col_pos >= BUFFER_WIDTH || char.ascii_char == 0x0A { /* \n hex is 0x0A */
+                if char.ascii_char == 0x0A { /* \n hex is 0x0A */
                     self.row_pos += 1;
                     self.col_pos = 0;
                 } else {
-                    let char_ptr = self.buffer.as_mut_ptr() as *mut ScreenCharacter;
-                    *char_ptr.add(self.get_offset()) = char;
+                    if self.col_pos >= BUFFER_WIDTH {
+                        self.row_pos += 1;
+                        self.col_pos = 0;
+                    }
+                    let char_ptr = self.buffer
+                        .get_unchecked_mut(self.row_pos)
+                        .get_unchecked_mut(self.col_pos)
+                        as *mut MaybeUninit<ScreenCharacter>;
+                    core::ptr::write(char_ptr, MaybeUninit::new(char));
                     self.col_pos += 1;
                 }
                 Ok(())
@@ -130,7 +137,6 @@ impl VGABuffer {
         }
     }
 
-    /*
     pub fn write_fmt_text_to_buf(
         &mut self, 
         text: &str, 
@@ -138,30 +144,58 @@ impl VGABuffer {
         bg_color:BackgroundColor, 
         blink: bool) 
     -> Result<(), VGAError> {
-
-    }
-    */
-
-    pub fn flush(&self, frame_buf: &mut [[u16; BUFFER_WIDTH]; BUFFER_HEIGHT]) {
-        unsafe {
-            for i in 0..BUFFER_HEIGHT {
-                for j in 0..BUFFER_WIDTH {
-                    let frame_ptr = frame_buf.get_unchecked_mut(i as usize).get_unchecked_mut(j as usize);
-                    let vga_ptr = self.buffer.get_unchecked(i as usize).get_unchecked(j as usize).as_ptr() as *const u16;
-                    core::ptr::write_volatile(frame_ptr, *vga_ptr);
-                }
+        if !text.is_ascii() {
+            Err(VGAError::InvalidASCIIError)
+        } else {
+            for ch in text.chars() {
+                let ascii_ch = unsafe { core::ascii::Char::from_u8_unchecked(ch as u8) };
+                let screen_ch = ScreenCharacter::new(
+                    ascii_ch, 
+                    fg_color, 
+                    bg_color,
+                    blink
+                );
+                self.write_char_to_buf(screen_ch)?;
             }
+            Ok(())
         }
     }
 
+    pub unsafe fn flush(&self, frame_buf: &mut [[u16; BUFFER_WIDTH]; BUFFER_HEIGHT]) {
+    unsafe {
+        for i in 0..BUFFER_HEIGHT {
+            for j in 0..BUFFER_WIDTH {
+                let src_ptr = self.buffer
+                    .get_unchecked(i)
+                    .get_unchecked(j)
+                    .as_ptr() as *const u16;
+                let dst_ptr = frame_buf
+                    .get_unchecked_mut(i)
+                    .get_unchecked_mut(j) 
+                    as *mut u16;
+                let value = core::ptr::read_volatile(srcl_ptr);
+                core::ptr::write_volatile(dst_ptr, value);
+            }
+        }
+    }
+}
+
+
     pub fn clear(&mut self) {
         unsafe {
-            let base_ptr = self.buffer.as_mut_ptr() as *mut ScreenCharacter;
-            for i in 0..BUFFER_CAPACITY {
-                core::ptr::write(
-                    base_ptr.add(i), 
-                    ScreenCharacter { ascii_char: 0x00, attribute: 0x00 }
-                );
+            for i in 0..BUFFER_HEIGHT {
+                for j in 0..BUFFER_WIDTH {
+                    let buf_ptr = self.buffer
+                        .get_unchecked_mut(i)
+                        .get_unchecked_mut(j) as *mut MaybeUninit<ScreenCharacter>;
+                    core::ptr::write_volatile(
+                        buf_ptr, 
+                        MaybeUninit::new(ScreenCharacter { 
+                            ascii_char: 0x00, 
+                            attribute: 0x00, 
+                        })
+                    );
+                }
             }
         }
         self.row_pos = 0;
