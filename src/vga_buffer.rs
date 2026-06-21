@@ -102,27 +102,28 @@ impl VGABuffer {
     }
 
     fn write_char_to_buf(&mut self, char: ScreenCharacter) -> Result<(), VGAError> {
-        if self.get_offset() < BUFFER_WIDTH * BUFFER_HEIGHT {
-            unsafe {
-                if char.ascii_char == 0x0A { /* \n hex is 0x0A */
+        unsafe {
+            if char.ascii_char == 0x0A { /* \n hex is 0x0A */
+                self.row_pos += 1;
+                self.col_pos = 0;
+            } else {
+                if self.row_pos >=BUFFER_HEIGHT {
+                    return Err(VGAError::WriteError);
+                } else if self.col_pos >= BUFFER_WIDTH {
                     self.row_pos += 1;
                     self.col_pos = 0;
-                } else {
-                    if self.col_pos >= BUFFER_WIDTH {
-                        self.row_pos += 1;
-                        self.col_pos = 0;
-                    }
-                    let char_ptr = self.buffer
-                        .get_unchecked_mut(self.row_pos)
-                        .get_unchecked_mut(self.col_pos)
-                        as *mut MaybeUninit<ScreenCharacter>;
-                    core::ptr::write(char_ptr, MaybeUninit::new(char));
-                    self.col_pos += 1;
                 }
-                Ok(())
+                let char_ptr = self.buffer
+                    .get_unchecked_mut(self.row_pos)
+                    .get_unchecked_mut(self.col_pos)
+                    as *mut MaybeUninit<ScreenCharacter>;
+                core::ptr::write(char_ptr, MaybeUninit::new(char));
+                self.col_pos += 1;
             }
-        } else {
-            Err(VGAError::WriteError)
+            if self.row_pos >=BUFFER_HEIGHT {
+                return Err(VGAError::WriteError);
+            }
+            Ok(())  
         }
     }
 
