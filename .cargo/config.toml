@@ -4,3 +4,4 @@ target = "i686-unknown-none.json"
 [unstable]
 build-std = ["core"]
 build-std-features = ["compiler-builtins-mem"]
+json-target-spec = true

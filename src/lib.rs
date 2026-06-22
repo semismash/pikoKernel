@@ -1,6 +1,7 @@
 #![no_std]
 #![allow(non_snake_case)]
 #![feature(ascii_char)]
+#![feature(ascii_char_variants)]
 
 mod panichandler;
 mod display;
@@ -13,7 +14,8 @@ pub mod arch {
 }
 
 use display::*;
-use display::ForegroundColor::*;
+use display::ForegroundColor as FGColor;
+use display::BackgroundColor as BGColor;
 use arch::i686::vga;
 
 const VGA_BUFFER_ADR: *mut u8 = 0xb8000 as *mut u8;
@@ -21,11 +23,10 @@ const VGA_BUFFER_ADR: *mut u8 = 0xb8000 as *mut u8;
 #[unsafe(no_mangle)]
 pub extern "C" fn kernel_main() -> ! {
     let message_1 = "Hey, what's up :D!";
-    let message_2 = "\nHey, what's up :D! (but it's red)\n";
+    let message_2 = "Hey, what's up :D! (but it's red)";
     let message_3 = "I'm a ";
     let message_4 = "Rustacean";
-    let message_5 = ", what's up?\n";
-    //let color: u8 = 0x0A;
+    let message_5 = ", what's up?";
 
     unsafe {
         vga::arch_i686_enable_cursor(14, 15);
@@ -35,14 +36,15 @@ pub extern "C" fn kernel_main() -> ! {
             &mut *(VGA_BUFFER_ADR as *mut [[u16; BUFFER_WIDTH]; BUFFER_HEIGHT]);
 
         local_buffer.clear(); //ALWAYS INITIALIZE THE BUFFER WITH A clear() BEFORE USING.
-        local_buffer.write_plain_text_to_buf(message_1);
-        local_buffer.write_fmt_text_to_buf(message_2, Red, None, None);
-        local_buffer.write_fmt_text_to_buf(message_3, Magenta, None, None);
-        local_buffer.write_fmt_text_to_buf(message_4, Yellow, None, None);
-        local_buffer.write_fmt_text_to_buf(message_5, Magenta, None, None);
         
-        local_buffer.flush(vga_ref);
-        
+        println!(local_buffer, vga_ref, message_1);
+        println!(local_buffer, vga_ref, message_2, FGColor::Red);
+        print!(local_buffer, vga_ref, message_3, FGColor::Magenta);
+        print!(local_buffer, vga_ref, message_4, FGColor::Yellow);
+        println!(local_buffer, vga_ref, message_5, FGColor::Magenta);
+
+        time::delay_seconds(2);
+        local_buffer.clear_screen(vga_ref);
     }
 
     loop {}

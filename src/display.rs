@@ -3,8 +3,10 @@ use core::ptr::{write, write_volatile};
 
 pub const BUFFER_WIDTH: usize = 80;
 pub const BUFFER_HEIGHT: usize = 25;
+const BUFFER_CAPACITY: usize = BUFFER_WIDTH * BUFFER_HEIGHT;
 
 type Buffer = [[MaybeUninit<ScreenCharacter>; BUFFER_WIDTH]; BUFFER_HEIGHT];
+type FrameBuffer = [[u16; BUFFER_WIDTH]; BUFFER_HEIGHT];
 
 #[repr(C)]
 pub struct VGABuffer {
@@ -16,7 +18,7 @@ pub struct VGABuffer {
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C, align(2))]
-struct ScreenCharacter {
+pub struct ScreenCharacter {
     ascii_char: u8,
     attribute: u8,
 }
@@ -67,7 +69,7 @@ pub enum BackgroundColor {
 
 impl ScreenCharacter {
     
-    fn new<FG, BG, BL>
+    pub fn new<FG, BG, BL>
     (
         ascii_code: Char,
         fg_color: FG,
@@ -93,16 +95,18 @@ impl ScreenCharacter {
 impl VGABuffer {
 
     pub fn new(on_cursor_update: Option<fn(usize, usize)>) -> Self {
-        Self {
+        let mut new_buf = Self {
             buffer: [[MaybeUninit::uninit(); BUFFER_WIDTH]; BUFFER_HEIGHT],
             row_pos: 0,
             col_pos: 0,
             on_cursor_update: on_cursor_update,
-        }
+        };
+        new_buf.clear();
+        new_buf
     }
 
-    fn write_char_to_buf(&mut self, char: ScreenCharacter) -> Result<(), VGAError> {
-        if self.get_offset() < BUFFER_WIDTH * BUFFER_HEIGHT {
+    pub fn write_char_to_buf(&mut self, char: ScreenCharacter) -> Result<(), VGAError> {
+        if self.get_offset() < BUFFER_CAPACITY {
             unsafe {
                 if char.ascii_char == 0x0A { /* \n hex is 0x0A */
                     self.row_pos += 1;
@@ -119,31 +123,10 @@ impl VGABuffer {
                     core::ptr::write(char_ptr, MaybeUninit::new(char));
                     self.col_pos += 1;
                 }
-                if let Some(fn_cursor_update) = self.on_cursor_update {
-                    let checked_row = if self.row_pos >= BUFFER_HEIGHT { BUFFER_HEIGHT - 1 } else { self.row_pos };
-                    fn_cursor_update(checked_row, self.col_pos);
-                }
                 Ok(())
             }
         } else {
             Err(VGAError::WriteError)
-        }
-    }
-
-    pub fn write_plain_text_to_buf(&mut self, text: &str) -> Result<(), VGAError> {
-        if !text.is_ascii() {
-            Err(VGAError::InvalidASCIIError)
-        } else {
-            if text.len() <= (BUFFER_WIDTH * BUFFER_HEIGHT) - self.get_offset() {
-                for ch in text.chars() {
-                    let ascii_ch = unsafe { core::ascii::Char::from_u8_unchecked(ch as u8) };
-                    let screen_ch = ScreenCharacter::new(ascii_ch, None, None, None);
-                    self.write_char_to_buf(screen_ch)?;
-                }
-                Ok(())
-            } else {
-                Err(VGAError::WriteError)
-            }
         }
     }
 
@@ -163,7 +146,7 @@ impl VGABuffer {
         if !text.is_ascii() {
             Err(VGAError::InvalidASCIIError)
         } else {
-            if text.len() <= (BUFFER_WIDTH * BUFFER_HEIGHT) - self.get_offset() {
+            if text.len() <= (BUFFER_CAPACITY) - self.get_offset() {
                 for ch in text.chars() {
                     let ascii_ch = unsafe { core::ascii::Char::from_u8_unchecked(ch as u8) };
                     let screen_ch = ScreenCharacter::new(
@@ -181,16 +164,18 @@ impl VGABuffer {
         }
     }
 
-    pub unsafe fn flush(&self, frame_buf: &mut [[u16; BUFFER_WIDTH]; BUFFER_HEIGHT]) {
+    pub unsafe fn flush(&self, frame_buf: &mut FrameBuffer) {
         unsafe {
             let src_ptr = self.buffer.as_ptr() as *const u16;
             let dst_ptr = frame_buf.as_mut_ptr() as *mut u16;
-
-            for i in 0..(BUFFER_WIDTH * BUFFER_HEIGHT) {
+            for i in 0..(BUFFER_CAPACITY) {
                 let value = core::ptr::read(src_ptr.add(i));
                 core::ptr::write_volatile(dst_ptr.add(i), value);
             }
-
+        }
+        if let Some(fn_cursor_update) = self.on_cursor_update {
+            let checked_row = if self.row_pos >= BUFFER_HEIGHT { BUFFER_HEIGHT - 1 } else { self.row_pos };
+            fn_cursor_update(checked_row, self.col_pos);
         }
     }
 
@@ -221,16 +206,82 @@ impl VGABuffer {
 
 }
 
+macro_rules! to_buf {
+    ($buf:expr, $txt:expr) => {
+        to_buf!($buf, $txt, None, None, None)
+    };
+    ($buf:expr, $txt:expr, $fg:expr) => {
+        to_buf!($buf, $txt, $fg, None, None)
+    };
+    ($buf:expr, $txt:expr, $fg:expr, $bg:expr) => {
+        to_buf!($buf, $txt, $fg, $bg, None)
+    };
+    ($buf:expr, $txt:expr, $fg:expr, $bg:expr, $bl:expr) => {
+        {
+            $buf.write_fmt_text_to_buf($txt, $fg, $bg, $bl)
+            
+        }
+    };
+    ($($invalid:tt)*) => {
+        compile_error!("Invalid arguments passed!");
+    };
+}
+
+macro_rules! print {
+    ($buf:expr, $frame:expr, $($args:tt)*) => {
+        {
+            let res = to_buf!($buf, $($args)*);
+            if res.is_ok() {
+                unsafe { $buf.flush($frame); }
+            }
+            res
+        }
+    };
+}
+
+macro_rules! println {
+    ($buf:expr, $frame:expr, $($args:tt)*) => {
+        {
+            let res = to_buf!($buf, $($args)*);
+            if res.is_ok() {
+                let nl_char = 
+                ScreenCharacter::new(
+                    core::ascii::Char::LineFeed,
+                    None,
+                    None,
+                    None,
+                );
+                let nl_res = $buf.write_char_to_buf(nl_char);
+                if nl_res.is_ok() {
+                    unsafe { $buf.flush($frame); }
+                }
+                nl_res
+            } else {
+                res
+            }
+        }
+    };
+}
+
+pub(crate) use to_buf;
+pub(crate) use print;
+pub(crate) use println;
+
 impl VGABuffer {
 
-    /*
-    pub fn print(&mut self, ...) {
-    
+    pub fn clear_screen(&mut self, frame_buf: &mut FrameBuffer) {
+        unsafe {
+            self.clear();
+            self.flush(frame_buf);
+        }
     }
 
-    pub fn println(&mut self, ...) {
-    
+    pub fn check_if_full(&self) -> bool {
+        if (BUFFER_CAPACITY - self.get_offset()) <= 0 {
+            true
+        } else {
+            false
+        }
     }
-    */
 
 }
