@@ -1,5 +1,3 @@
-use core::arch;
-
 use crate::drivers::display::BUFFER_WIDTH;
 
 const VGA_BUFFER_ADR: *mut u8 = 0xb8000 as *mut u8;
