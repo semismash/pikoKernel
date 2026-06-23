@@ -49,17 +49,19 @@ impl GlobalDescriptor {
     
     pub unsafe fn initialize () {
 
-        let kernel_gdt = GDT {
-            null: GDTEntry::set_from_hex(0x0000000000000000),
-            kernel_code: GDTEntry::set_from_hex(0x00CF9A000000FFFF),
-            kernel_data: GDTEntry::set_from_hex(0x00CF92000000FFFF),
-        };
-        let descriptor = GDTPointer {
-            limit: (core::mem::size_of::<GDT>() * GDT_SEG_COUNT - 1) as u16,
-            base: &kernel_gdt as *const GDT as u32,
-        };
+        unsafe {
+            let kernel_gdt = GDT {
+                null: GDTEntry::set_from_hex(0x0000000000000000),
+                kernel_code: GDTEntry::set_from_hex(0x00CF9A000000FFFF),
+                kernel_data: GDTEntry::set_from_hex(0x00CF92000000FFFF),
+            };
+            let descriptor = GDTPointer {
+                limit: (core::mem::size_of::<GDT>() * GDT_SEG_COUNT - 1) as u16,
+                base: &kernel_gdt as *const GDT as u32,
+            };
 
-        GlobalDescriptor::flush(descriptor);
+            GlobalDescriptor::flush(descriptor);
+        }
 
     }
 
