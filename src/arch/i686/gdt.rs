@@ -1,12 +1,16 @@
 use core::arch;
 
-#[repr(C, packed)]
-struct GlobalDescriptor {
+use crate::arch::i686::gdt;
+
+const GDT_SEG_COUNT: usize = 3;
+
+#[repr(C, align(8))]
+struct GDT {
     null: GDTEntry,
     kernel_code: GDTEntry,
     kernel_data: GDTEntry,
-    user_code: GDTEntry,
-    user_data: GDTEntry,
+    //user_code: GDTEntry,
+    //user_data: GDTEntry,
 }
 
 #[repr(C, packed)]
@@ -43,15 +47,41 @@ struct GDTEntry {
 
 impl GlobalDescriptor {
     
-    fn initialize () {
+    pub unsafe fn initialize () {
+
+        let kernel_gdt = GDT {
+            null: GDTEntry::set_from_hex(0x0000000000000000),
+            kernel_code: GDTEntry::set_from_hex(0x00CF9A000000FFFF),
+            kernel_data: GDTEntry::set_from_hex(0x00CF92000000FFFF),
+        };
+        let descriptor = GDTPointer {
+            limit: (core::mem::size_of::<GDT>() * GDT_SEG_COUNT - 1) as u16,
+            base: &kernel_gdt as *const GDT as u32,
+        };
+
+        GlobalDescriptor::flush(descriptor);
 
     }
 
-    #[unsafe(naked)]
-    fn flush() {
+    pub unsafe fn flush(gdt_ptr: GDTPointer) {
         unsafe {
-            arch::naked_asm!(
-                
+            arch::asm!(
+                "lgdt [{ptr}]",
+
+                "push 0x08",
+                "push reload_cs",
+                "lret",
+
+                "reload_cs:",
+                "mov {tmp:x}, 0x10",
+                "mov ds, {tmp:x}",
+                "mov es, {tmp:x}",
+                "mov fs, {tmp:x}",
+                "mov gs, {tmp:x}",
+                "mov ss, {tmp:x}",
+                ptr = in(reg) &gdt_ptr,
+                tmp = out(reg) _,
+                options(readonly, nostack, preserves_flags)
             );
         }
     }
@@ -60,7 +90,7 @@ impl GlobalDescriptor {
 
 impl GDTEntry {
 
-    fn set_gate(
+    fn set_gate(        //to be used later
         limit: u32,                 // 0-15, 48-51
         base: u32,                  // 16-31, 32-39, 56-63
         seg_type: SegmentType,      // 40-43
@@ -83,7 +113,7 @@ impl GDTEntry {
         }
     }
     
-    fn set_from_hex(&mut self, val: u64) -> Self {
+    fn set_from_hex(val: u64) -> Self {
         Self {
             l_limit: (val & 0xFFFF) as u16,
             l_base: ((val >> 16) & 0xFFFF) as u16,
