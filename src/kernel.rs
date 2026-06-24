@@ -1,3 +1,4 @@
+use crate::arch::i686::gdt::GDTPointer;
 use crate::drivers::display::*;
 use crate::drivers::display::ForegroundColor as FGColor;
 use crate::drivers::display::BackgroundColor as BGColor;
@@ -18,7 +19,10 @@ pub fn main() -> ! {
         //set up GDT
         let cs: u16;
         let ds: u16;
-        (cs, ds) = i686::gdt::GDT::initialize();
+        let desc: GDTPointer;
+        (cs, ds, desc) = i686::gdt::GDT::initialize();
+        let entry_count = (desc.limit + 1) / 8;
+        let gdt_ptr = desc.base as *const u64;
 
         //enable text and cursor
         i686::vga::enable_cursor(14, 15);
@@ -28,7 +32,13 @@ pub fn main() -> ! {
             &mut *(i686::vga::VGA_BUFFER_ADR as *mut [[u16; BUFFER_WIDTH]; BUFFER_HEIGHT]);
 
         write!(local_buffer, "Value of CS is {:X}\n", cs);
-        write_and_flush!(local_buffer, frame, "Value of DS is {:X}\n", ds);
+        write!(local_buffer, "Value of DS is {:X}\n", ds);
+
+        for i in 0..entry_count {
+            let raw_entry: u64 = unsafe { *gdt_ptr.add(i as usize) };
+            write!(local_buffer, "Entry {}: {:X}\n", i, raw_entry);
+        }
+        local_buffer.flush(frame);
         
         println!(local_buffer, frame, message_1);
         println!(local_buffer, frame, message_2, FGColor::Red);
@@ -36,8 +46,8 @@ pub fn main() -> ! {
         print!(local_buffer, frame, message_4, FGColor::Yellow);
         println!(local_buffer, frame, message_5, FGColor::Magenta);
 
-        time::delay_seconds(2);
-        local_buffer.clear_screen(frame);
+        /*time::delay_seconds(2);
+        local_buffer.clear_screen(frame);*/
     }
 
     loop {}

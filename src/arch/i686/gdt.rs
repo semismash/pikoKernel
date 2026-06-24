@@ -13,9 +13,9 @@ pub struct GDT {
 }
 
 #[repr(C, packed)]
-struct GDTPointer {
-    limit: u16,
-    base: u32,
+pub struct GDTPointer {
+    pub limit: u16,
+    pub base: u32,
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -57,7 +57,7 @@ impl GDT {
         }
     }
     
-    pub unsafe fn initialize() -> (u16, u16) {
+    pub unsafe fn initialize() -> (u16, u16, GDTPointer) {
         unsafe {
             KERNEL_GDT = GDT {
                 null: GDTEntry::set_from_hex(0x0000000000000000),
@@ -112,15 +112,18 @@ impl GDT {
             // check values of code and data segment registers (should be 0x08 and 0x10 respectively)
             let cs: u16;
             let ds: u16;
+            let mut active_descriptor = GDTPointer{ limit: 0 , base: 0 };
             unsafe {
                 core::arch::asm!(
-                    "mov {0:x}, cs",
-                    "mov {1:x}, ds",
-                    out(reg) cs,
-                    out(reg) ds,
+                    "mov {cs_reg}, cs",
+                    "mov {ds_reg}, ds",
+                    "sgdt [{ptr}]",
+                    cs_reg = out(reg) cs,
+                    ds_reg = out(reg) ds,
+                    ptr = in(reg) &mut active_descriptor,
                 );
-            (cs, ds)
             }
+            (cs, ds, active_descriptor)
 
         }
     }
