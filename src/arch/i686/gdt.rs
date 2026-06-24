@@ -1,16 +1,17 @@
 use core::arch;
 
-use crate::arch::i686::gdt;
+use crate::arch::i686::vga;
 
-const GDT_SEG_COUNT: usize = 3;
+static mut KERNEL_GDT: GDT = GDT::new_empty();
+static mut GDT_DESCRIPTOR: GDTPointer = GDTPointer { limit: 0 , base: 0 };
 
 #[repr(C, align(8))]
-struct GDT {
+pub struct GDT {
     null: GDTEntry,
     kernel_code: GDTEntry,
     kernel_data: GDTEntry,
-    //user_code: GDTEntry,
-    //user_data: GDTEntry,
+    user_code: GDTEntry,
+    user_data: GDTEntry,
 }
 
 #[repr(C, packed)]
@@ -19,6 +20,7 @@ struct GDTPointer {
     base: u32,
 }
 
+#[derive(Debug, Clone, Copy)]
 struct SegmentType {
     A: bool,    // access (40)
     RW: bool,   // read/write (41),
@@ -45,45 +47,105 @@ struct GDTEntry {
     h_base: u8,
 }
 
-impl GlobalDescriptor {
-    
-    pub unsafe fn initialize () {
+impl GDT {
 
-        unsafe {
-            let kernel_gdt = GDT {
-                null: GDTEntry::set_from_hex(0x0000000000000000),
-                kernel_code: GDTEntry::set_from_hex(0x00CF9A000000FFFF),
-                kernel_data: GDTEntry::set_from_hex(0x00CF92000000FFFF),
-            };
-            let descriptor = GDTPointer {
-                limit: (core::mem::size_of::<GDT>() * GDT_SEG_COUNT - 1) as u16,
-                base: &kernel_gdt as *const GDT as u32,
-            };
-
-            GlobalDescriptor::flush(descriptor);
+    const fn new_empty() -> Self {
+        Self {
+            null: GDTEntry::new_zero(),
+            kernel_code: GDTEntry::new_zero(),
+            kernel_data: GDTEntry::new_zero(),
+            user_code: GDTEntry::new_zero(),
+            user_data: GDTEntry::new_zero(),
         }
+    }
+    
+    pub unsafe fn initialize() {
+        unsafe {
+            KERNEL_GDT = GDT {
+                null: GDTEntry::set_from_hex(0x0000000000000000),
+                kernel_code: GDTEntry::set_gate(     // 0x00CF9A000000FFFF
+                    0xFFFFF,
+                    0x00000000,
+                    SegmentType { A: false, RW: true, DC: false, E: true },
+                    true,
+                    AccessLevel::KernelMode,
+                    true,
+                    true,
+                    true,
+                ),
+                kernel_data: GDTEntry::set_gate(    // 0x00CF92000000FFFF
+                    0xFFFFF,
+                    0x00000000,
+                    SegmentType { A: false, RW: true, DC: false, E: false },
+                    true,
+                    AccessLevel::KernelMode,
+                    true,
+                    true,
+                    true,
+                ),
+                user_code: GDTEntry::set_gate(      // 0x00CFFA000000FFFF
+                    0xFFFFF,
+                    0x00000000,
+                    SegmentType { A: false, RW: true, DC: false, E: true },
+                    true,
+                    AccessLevel::UserMode,
+                    true,
+                    true,
+                    true,
+                ),
+                user_data: GDTEntry::set_gate(      // 0x00CFF2000000FFFF
+                    0xFFFFF,
+                    0x00000000,
+                    SegmentType { A: false, RW: true, DC: false, E: false },
+                    true,
+                    AccessLevel::UserMode,
+                    true,
+                    true,
+                    true,
+                ),
+            };
+            GDT_DESCRIPTOR = GDTPointer {
+                limit: (core::mem::size_of::<GDT>() - 1) as u16,
+                base: &raw const KERNEL_GDT as *const GDT as u32,
+            };
 
+            GDT::flush(&raw const GDT_DESCRIPTOR);
+
+            // check values of code and data segment registers (should be 0x08 and 0x10 respectively)
+            /*let cs: u16;
+            let ds: u16;
+            unsafe {
+                core::arch::asm!(
+                    "mov {0:x}, cs",
+                    "mov {1:x}, ds",
+                    out(reg) cs,
+                    out(reg) ds,
+                );
+            }
+
+            crate::drivers::display::println!();*/
+
+        }
     }
 
-    pub unsafe fn flush(gdt_ptr: GDTPointer) {
+    unsafe fn flush(gdt_ptr: *const GDTPointer) {
         unsafe {
             arch::asm!(
                 "lgdt [{ptr}]",
-
                 "push 0x08",
-                "push reload_cs",
-                "lret",
-
-                "reload_cs:",
-                "mov {tmp:x}, 0x10",
-                "mov ds, {tmp:x}",
-                "mov es, {tmp:x}",
-                "mov fs, {tmp:x}",
-                "mov gs, {tmp:x}",
-                "mov ss, {tmp:x}",
-                ptr = in(reg) &gdt_ptr,
+                "lea {tmp}, [2f]",
+                "push {tmp}",
+                "retf",   
+                "2:",
+                "mov {tmp}, 0x10",
+                "mov ds, {tmp}",
+                "mov es, {tmp}",
+                "mov fs, {tmp}",
+                "mov gs, {tmp}",
+                "mov ss, {tmp}",
+                ptr = in(reg) gdt_ptr,
                 tmp = out(reg) _,
-                options(readonly, nostack, preserves_flags)
+                options(nostack, preserves_flags)
             );
         }
     }
@@ -92,7 +154,18 @@ impl GlobalDescriptor {
 
 impl GDTEntry {
 
-    fn set_gate(        //to be used later
+    const fn new_zero() -> Self {
+        Self {
+            l_limit: 0,
+            l_base: 0,
+            m_base: 0,
+            access: 0,
+            gran: 0,
+            h_base: 0,
+        }
+    }
+
+    fn set_gate(    //to be used later
         limit: u32,                 // 0-15, 48-51
         base: u32,                  // 16-31, 32-39, 56-63
         seg_type: SegmentType,      // 40-43
@@ -115,7 +188,7 @@ impl GDTEntry {
         }
     }
     
-    fn set_from_hex(val: u64) -> Self {
+    const fn set_from_hex(val: u64) -> Self {
         Self {
             l_limit: (val & 0xFFFF) as u16,
             l_base: ((val >> 16) & 0xFFFF) as u16,

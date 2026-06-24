@@ -1,7 +1,7 @@
 use crate::drivers::display::*;
 use crate::drivers::display::ForegroundColor as FGColor;
 use crate::drivers::display::BackgroundColor as BGColor;
-use crate::arch::i686::vga;
+use crate::arch::i686;
 use crate::time;
 
 pub fn main() -> ! {
@@ -13,11 +13,15 @@ pub fn main() -> ! {
     let message_5 = ", what's up?";
 
     unsafe {
-        vga::arch_i686_enable_cursor(14, 15);
+        //set up GDT
+        i686::gdt::GDT::initialize();
 
-        let mut local_buffer = VGABuffer::new(Some(vga::arch_i686_update_cursor));
+        //enable text and cursor
+        i686::vga::enable_cursor(14, 15);
+
+        let mut local_buffer = VGABuffer::new(Some(i686::vga::update_cursor));
         let vga_ref = 
-            &mut *(vga::VGA_BUFFER_ADR as *mut [[u16; BUFFER_WIDTH]; BUFFER_HEIGHT]);
+            &mut *(i686::vga::VGA_BUFFER_ADR as *mut [[u16; BUFFER_WIDTH]; BUFFER_HEIGHT]);
         
         println!(local_buffer, vga_ref, message_1);
         println!(local_buffer, vga_ref, message_2, FGColor::Red);

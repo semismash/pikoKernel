@@ -1,11 +1,12 @@
+use core::arch;
 use crate::drivers::display::BUFFER_WIDTH;
 
-const VGA_BUFFER_ADR: *mut u8 = 0xb8000 as *mut u8;
+pub const VGA_BUFFER_ADR: *mut u8 = 0xb8000 as *mut u8;
 const PORT_INDEX: u16 = 0x3D4u16;
 const PORT_DATA: u16 = 0x3D5u16;
 
 //from OSdev wiki
-pub fn arch_i686_enable_cursor(cursor_start: u8, cursor_end: u8) {
+pub fn enable_cursor(cursor_start: u8, cursor_end: u8) {
 
     //line cursor: arch_i686_enable_cursor(14, 15)
     //block cursor: arch_i686_enable_cursor(0, 15)
@@ -35,7 +36,7 @@ pub fn arch_i686_enable_cursor(cursor_start: u8, cursor_end: u8) {
 
 }
 
-pub fn arch_i686_disable_cursor() {
+pub fn disable_cursor() {
     unsafe {
         arch::asm!("out dx, al", in("dx") PORT_INDEX, in("al") 0x0Au8, 
             options(nomem, nostack, preserves_flags));
@@ -44,7 +45,7 @@ pub fn arch_i686_disable_cursor() {
     }
 }
 
-pub fn arch_i686_update_cursor(row: usize, col: usize) {
+pub fn update_cursor(row: usize, col: usize) {
     let pos = (row * BUFFER_WIDTH + col) as u16;
 
     unsafe {
