@@ -114,7 +114,7 @@ impl GDT {
             let ds: u16;
             let mut active_descriptor = GDTPointer{ limit: 0 , base: 0 };
             unsafe {
-                core::arch::asm!(
+                arch::asm!(
                     "mov {cs_reg}, cs",
                     "mov {ds_reg}, ds",
                     "sgdt [{ptr}]",
