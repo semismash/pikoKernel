@@ -17,11 +17,12 @@ const PIC_EOI: u8 = 0x20;
 
 const IDT_ENTRY_COUNT: usize = 256;
 
-static mut KERNEL_IDT: [MaybeUninit<IDTEntry>; IDT_ENTRY_COUNT] = [MaybeUninit::uninit(); IDT_ENTRY_COUNT];
+static mut KERNEL_IDT: [IDTEntry; IDT_ENTRY_COUNT] = [IDTEntry::set_zero(); IDT_ENTRY_COUNT];
 static mut IDT_DESCRIPTOR: IDTPointer = IDTPointer { limit: 0, base: 0 };
 
 struct IDT;
 
+#[derive(Debug, Clone, Copy)]
 #[repr(C, packed)]
 struct IDTEntry {
     l_offset: u16,      // 0-15
@@ -31,6 +32,7 @@ struct IDTEntry {
     h_offset: u16,      // 48-63
 }
 
+#[derive(Debug, Clone, Copy)]
 #[repr(C, packed)]
 struct IDTPointer {
     limit: u16,
@@ -60,32 +62,32 @@ impl PIC {
             arch::asm!("in al, dx", in("dx") PIC2_DATA, out("al") mask_2, options(nomem, nostack, preserves_flags));
 
             //ICW1: initialization
-            arch::asm!("out dx, al", out("dx") PIC1_COMMAND, out("al") ICW1_INIT, options(nomem, nostack, preserves_flags));
-            io_delay();
-            arch::asm!("out dx, al", out("dx") PIC2_COMMAND, out("al") ICW1_INIT, options(nomem, nostack, preserves_flags));
-            io_delay();
+            arch::asm!("out dx, al", in("dx") PIC1_COMMAND, in("al") ICW1_INIT, options(nomem, nostack, preserves_flags));
+            PIC::io_delay();
+            arch::asm!("out dx, al", in("dx") PIC2_COMMAND, in("al") ICW1_INIT, options(nomem, nostack, preserves_flags));
+            PIC::io_delay();
 
             //ICW2: set vector offets
-            arch::asm!("out dx, al", out("dx") PIC1_DATA, out("al") PIC1_OFFSET, options(nomem, nostack, preserves_flags));
-            io_delay();
-            arch::asm!("out dx, al", out("dx") PIC2_DATA, out("al") PIC2_OFFSET, options(nomem, nostack, preserves_flags));
-            io_delay();
+            arch::asm!("out dx, al", in("dx") PIC1_DATA, in("al") PIC1_OFFSET, options(nomem, nostack, preserves_flags));
+            PIC::io_delay();
+            arch::asm!("out dx, al", in("dx") PIC2_DATA, in("al") PIC2_OFFSET, options(nomem, nostack, preserves_flags));
+            PIC::io_delay();
 
             //ICW3: configure cascading
-            arch::asm!("out dx, al", out("dx") PIC1_DATA, out("al") ICW3_PIC1_CASCADE, options(nomem, nostack, preserves_flags));
-            io_delay();
-            arch::asm!("out dx, al", out("dx") PIC2_DATA, out("al") ICW3_PIC2_CASCADE, options(nomem, nostack, preserves_flags));
-            io_delay();
+            arch::asm!("out dx, al", in("dx") PIC1_DATA, in("al") ICW3_PIC1_CASCADE, options(nomem, nostack, preserves_flags));
+            PIC::io_delay();
+            arch::asm!("out dx, al", in("dx") PIC2_DATA, in("al") ICW3_PIC2_CASCADE, options(nomem, nostack, preserves_flags));
+            PIC::io_delay();
 
             //ICW4: set environment mode to 8086
-            arch::asm!("out dx, al", out("dx") PIC1_DATA, out("al") ICW4_8086, options(nomem, nostack, preserves_flags));
-            io_delay();
-            arch::asm!("out dx, al", out("dx") PIC2_DATA, out("al") ICW4_8086, options(nomem, nostack, preserves_flags));
-            io_delay();
+            arch::asm!("out dx, al", in("dx") PIC1_DATA, in("al") ICW4_8086, options(nomem, nostack, preserves_flags));
+            PIC::io_delay();
+            arch::asm!("out dx, al", in("dx") PIC2_DATA, in("al") ICW4_8086, options(nomem, nostack, preserves_flags));
+            PIC::io_delay();
 
             //restore masked interrupts
-            arch::asm!("out dx, al", out("dx") PIC1_DATA, out("al") mask_1, options(nomem, nostack, preserves_flags));
-            arch::asm!("out dx, al", out("dx") PIC2_DATA, out("al") mask_2, options(nomem, nostack, preserves_flags));
+            arch::asm!("out dx, al", in("dx") PIC1_DATA, in("al") mask_1, options(nomem, nostack, preserves_flags));
+            arch::asm!("out dx, al", in("dx") PIC2_DATA, in("al") mask_2, options(nomem, nostack, preserves_flags));
         }
     }
 
@@ -104,11 +106,10 @@ impl IDT {
             // set up IDT and interrupt handlers
 
             IDT_DESCRIPTOR = IDTPointer {
-                limit: (core::mem::size_of<IDTEntry>() * IDT_ENTRY_COUNT - 1) as u16,
+                limit: (core::mem::size_of::<IDTEntry>() * IDT_ENTRY_COUNT - 1) as u16,
                 base: &raw const KERNEL_IDT as *const IDTEntry as u32,
             };
-            arch::asm!("lidt [{ptr}]", ptr = in(reg) IDT_DESCRIPTOR, options(nostack, preserves_flags));
-            arch::asm!("sti", options(nomem, nostack, preserves_flags));
+            arch::asm!("lidt [{ptr}]", ptr = in(reg) &raw const IDT_DESCRIPTOR, options(nostack, preserves_flags));
         }
     }
 

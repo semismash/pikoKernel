@@ -9,8 +9,12 @@ const BUFFER_CAPACITY: usize = BUFFER_WIDTH * BUFFER_HEIGHT;
 type Buffer = [[MaybeUninit<ScreenCharacter>; BUFFER_WIDTH]; BUFFER_HEIGHT];
 type FrameBuffer = [[u16; BUFFER_WIDTH]; BUFFER_HEIGHT];
 
+#[derive(Debug, Clone, Copy)]
+pub struct FramePointer(pub *mut FrameBuffer);
+unsafe impl Sync for FramePointer {}
+
 #[repr(C)]
-pub struct VGABuffer {
+pub struct VGAWriter {
     buffer: Buffer,
     row_pos: usize,
     col_pos: usize,
@@ -93,16 +97,15 @@ impl ScreenCharacter {
 
 }
 
-impl VGABuffer {
+impl VGAWriter {
 
-    pub fn new(on_cursor_update: Option<fn(usize, usize)>) -> Self {
+    pub const fn new(on_cursor_update: Option<fn(usize, usize)>) -> Self {
         let mut new_buf = Self {
-            buffer: [[MaybeUninit::uninit(); BUFFER_WIDTH]; BUFFER_HEIGHT],
+            buffer: [[MaybeUninit::new(ScreenCharacter { ascii_char: 0x20, attribute: 0x0F, }); BUFFER_WIDTH]; BUFFER_HEIGHT],
             row_pos: 0,
             col_pos: 0,
             on_cursor_update: on_cursor_update,
         };
-        new_buf.clear();
         new_buf
     }
 
@@ -165,10 +168,10 @@ impl VGABuffer {
         }
     }
 
-    pub unsafe fn flush(&self, frame_buf: &mut FrameBuffer) {
+    pub unsafe fn flush(&self, frame_buf: FramePointer) {
         unsafe {
             let src_ptr = self.buffer.as_ptr() as *const u16;
-            let dst_ptr = frame_buf.as_mut_ptr() as *mut u16;
+            let dst_ptr = frame_buf.0.as_mut_ptr() as *mut u16;
             for i in 0..(BUFFER_CAPACITY) {
                 let value = core::ptr::read(src_ptr.add(i));
                 core::ptr::write_volatile(dst_ptr.add(i), value);
@@ -226,6 +229,7 @@ macro_rules! to_buf {
         compile_error!("Invalid arguments passed!");
     };
 }
+pub(crate) use to_buf;
 
 macro_rules! print {
     ($buf:expr, $frame:expr, $($args:tt)*) => {
@@ -237,7 +241,11 @@ macro_rules! print {
             res
         }
     };
+    ($($invalid:tt)*) => {
+        compile_error!("Invalid arguments passed to print!");
+    };
 }
+pub(crate) use print;
 
 macro_rules! println {
     ($buf:expr, $frame:expr, $($args:tt)*) => {
@@ -261,15 +269,15 @@ macro_rules! println {
             }
         }
     };
+    ($($invalid:tt)*) => {
+        compile_error!("Invalid arguments passed to println!");
+    };
 }
-
-pub(crate) use to_buf;
-pub(crate) use print;
 pub(crate) use println;
 
-impl VGABuffer {
+impl VGAWriter {
 
-    pub fn clear_screen(&mut self, frame_buf: &mut FrameBuffer) {
+    pub fn clear_screen(&mut self, frame_buf: FramePointer) {
         unsafe {
             self.clear();
             self.flush(frame_buf);
@@ -286,7 +294,7 @@ impl VGABuffer {
 
 }
 
-impl fmt::Write for VGABuffer {
+impl fmt::Write for VGAWriter {
 
     fn write_str(&mut self, s: &str) -> fmt::Result { // debugging purpose only for now
         self.write_fmt_text_to_buf(s, None, None, None)
@@ -296,6 +304,11 @@ impl fmt::Write for VGABuffer {
 }
 
 macro_rules! write_and_flush {
+    ($buf:expr, $frame:expr) => {
+        unsafe {
+            $buf.flush($frame);
+        }
+    };
     ($buf:expr, $frame:expr, $fmt:expr $(, $($args:tt)*)?) => {
         {
             write!($buf, $fmt $(, $($args)*)?)

@@ -1,15 +1,16 @@
+#![feature(array_ptr_get)]
+#![allow(warnings)]
 #![no_std]
 #![allow(non_snake_case)]
 #![feature(ascii_char)]
 #![feature(ascii_char_variants)]
+#![feature(abi_x86_interrupt)]
 
-pub mod kernel;
-pub mod panichandler;
+pub mod sys;
 pub mod arch;
 pub mod drivers;
-pub mod time;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kernel_main() -> ! {
-    kernel::main()
+    sys::kernel::main()
 }
