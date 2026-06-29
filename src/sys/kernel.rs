@@ -52,7 +52,7 @@ pub fn main() -> ! {
         sys::console::println!(", what's up?", FGColor::Magenta);
         
 
-        //time::delay_seconds(2);
+        //time_test::delay_seconds(2);
         //panic!("asfdfasdfasgdewgw");
         //local_buffer.clear_screen(frame);
     }
