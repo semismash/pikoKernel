@@ -26,4 +26,11 @@ impl SysTime {
         }
     }
 
+    pub fn delay(ticks: u32) {
+        let start_tick = Self::get_ticks();
+        while Self::get_ticks() - start_tick < ticks { 
+            core::hint::spin_loop();
+        }
+    }
+
 }

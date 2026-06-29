@@ -46,12 +46,14 @@ pub fn main() -> ! {
         }
         sys::console::write_and_flush!();
 
+        //test delay
+        crate::sys::time::SysTime::delay(5000);
+
         sys::console::println!("Hey, what's up :D!");
         sys::console::println!("Hey, what's up :D! (but it's red)", FGColor::Red);
         sys::console::print!("I'm a ", FGColor::Magenta);
         sys::console::print!("Rustacean", FGColor::Yellow);
         sys::console::println!(", what's up?", FGColor::Magenta);
-        
 
         //time_test::delay_seconds(2);
         //panic!("asfdfasdfasgdewgw");

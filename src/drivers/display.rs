@@ -1,4 +1,4 @@
-use core::{ascii::Char, mem::MaybeUninit};
+use core::{ascii::Char};
 use core::ptr::{write, write_volatile};
 use core::fmt;
 use crate::sys;
@@ -8,7 +8,7 @@ pub const BUFFER_WIDTH: usize = 80;
 pub const BUFFER_HEIGHT: usize = 25;
 const BUFFER_CAPACITY: usize = BUFFER_WIDTH * BUFFER_HEIGHT;
 
-type Buffer = [[MaybeUninit<ScreenCharacter>; BUFFER_WIDTH]; BUFFER_HEIGHT];
+type Buffer = [[ScreenCharacter; BUFFER_WIDTH]; BUFFER_HEIGHT];
 type FrameBuffer = [[u16; BUFFER_WIDTH]; BUFFER_HEIGHT];
 
 #[derive(Debug, Clone, Copy)]
@@ -103,14 +103,13 @@ impl ScreenCharacter {
 impl VGAWriter {
 
     pub const fn new(on_cursor_update: Option<fn(usize, usize)>) -> Self {
-        let mut new_buf = Self {
-            buffer: [[MaybeUninit::new(ScreenCharacter { ascii_char: 0x20, attribute: 0x0F, }); BUFFER_WIDTH]; BUFFER_HEIGHT],
+        Self {
+            buffer: [[ScreenCharacter { ascii_char: 0x20, attribute: 0x0F, }; BUFFER_WIDTH]; BUFFER_HEIGHT],
             row_pos: 0,
             col_pos: 0,
             on_cursor_update: on_cursor_update,
             last_tick: 0,
-        };
-        new_buf
+        }
     }
 
     pub fn write_char_to_buf(&mut self, char: ScreenCharacter) -> Result<(), VGAError> {
@@ -127,8 +126,8 @@ impl VGAWriter {
                     let char_ptr = self.buffer
                         .get_unchecked_mut(self.row_pos)
                         .get_unchecked_mut(self.col_pos)
-                        as *mut MaybeUninit<ScreenCharacter>;
-                    core::ptr::write(char_ptr, MaybeUninit::new(char));
+                        as *mut ScreenCharacter;
+                    core::ptr::write(char_ptr, char);
                     self.col_pos += 1;
                 }
                 Ok(())
@@ -201,13 +200,13 @@ impl VGAWriter {
                 for j in 0..BUFFER_WIDTH {
                     let buf_ptr = self.buffer
                         .get_unchecked_mut(i)
-                        .get_unchecked_mut(j) as *mut MaybeUninit<ScreenCharacter>;
+                        .get_unchecked_mut(j) as *mut ScreenCharacter;
                     core::ptr::write_volatile(
                         buf_ptr, 
-                        MaybeUninit::new(ScreenCharacter { 
+                        ScreenCharacter { 
                             ascii_char: 0x20, 
                             attribute: 0x0F, 
-                        })
+                        }
                     );
                 }
             }
