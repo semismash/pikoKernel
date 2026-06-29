@@ -1,9 +1,9 @@
 use crate::drivers::display;
-use crate::drivers::display::{VGAWriter, BUFFER_WIDTH, BUFFER_HEIGHT};
+use crate::drivers::display::{DisplayWriter, BUFFER_WIDTH, BUFFER_HEIGHT};
 use crate::arch::i686::vga;
 use core::fmt::Write;
 
-pub(crate) static mut OS_BUFFER: VGAWriter = VGAWriter::new(Some(vga::update_cursor));
+pub(crate) static mut OS_BUFFER: DisplayWriter = DisplayWriter::new(Some(vga::update_cursor));
 pub(crate) static FRAME: display::FramePointer = display::FramePointer(
     vga::VGA_BUFFER_ADR as *mut [[u16; BUFFER_WIDTH]; BUFFER_HEIGHT]
 );

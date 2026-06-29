@@ -5,7 +5,7 @@ use crate::drivers::display::BackgroundColor as BGColor;
 use crate::drivers::display;
 use crate::drivers::display::*;
 use crate::sys;
-use crate::drivers::display::{VGAWriter, BUFFER_WIDTH, BUFFER_HEIGHT};
+use crate::drivers::display::{DisplayWriter, BUFFER_WIDTH, BUFFER_HEIGHT};
 use crate::arch::i686::vga;
 use crate::drivers::display::ScreenCharacter;
 use crate::sys::time;

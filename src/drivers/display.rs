@@ -16,7 +16,7 @@ pub struct FramePointer(pub *mut FrameBuffer);
 unsafe impl Sync for FramePointer {}
 
 #[repr(C)]
-pub struct VGAWriter {
+pub struct DisplayWriter {
     buffer: Buffer,
     row_pos: usize,
     col_pos: usize,
@@ -100,7 +100,7 @@ impl ScreenCharacter {
 
 }
 
-impl VGAWriter {
+impl DisplayWriter {
 
     pub const fn new(on_cursor_update: Option<fn(usize, usize)>) -> Self {
         Self {
@@ -204,8 +204,8 @@ impl VGAWriter {
                     core::ptr::write_volatile(
                         buf_ptr, 
                         ScreenCharacter { 
-                            ascii_char: 0x20, 
-                            attribute: 0x0F, 
+                            ascii_char: 0x20,
+                            attribute: 0x0F,
                         }
                     );
                 }
@@ -286,7 +286,7 @@ macro_rules! println {
 }
 pub(crate) use println;
 
-impl VGAWriter {
+impl DisplayWriter {
 
     pub fn clear_screen(&mut self, frame_buf: FramePointer) {
         unsafe {
@@ -305,7 +305,7 @@ impl VGAWriter {
 
 }
 
-impl fmt::Write for VGAWriter {
+impl fmt::Write for DisplayWriter {
 
     fn write_str(&mut self, s: &str) -> fmt::Result { // debugging purpose only for now
         self.write_fmt_text_to_buf(s, None, None, None)

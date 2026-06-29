@@ -14,6 +14,8 @@ pub mod arch;
 #[macro_use]
 pub mod drivers;
 
+pub mod sub;
+
 #[unsafe(no_mangle)]
 pub extern "C" fn kernel_main() -> ! {
     sys::kernel::main()
