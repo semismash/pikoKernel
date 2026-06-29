@@ -1,9 +1,10 @@
 use core::{arch, mem::MaybeUninit};
+use crate::arch::i686::isr::InterruptHandler;
 
-const PIC1_COMMAND: u16 = 0x20; // master PIC
-const PIC1_DATA: u16 = 0x21;
-const PIC2_COMMAND: u16 = 0xA0; // slave PIC
-const PIC2_DATA: u16 = 0xA1;
+pub const PIC1_COMMAND: u16 = 0x20; // master PIC
+pub const PIC1_DATA: u16 = 0x21;
+pub const PIC2_COMMAND: u16 = 0xA0; // slave PIC
+pub const PIC2_DATA: u16 = 0xA1;
 
 const ICW1_INIT: u8 = 0x11;
 const ICW3_PIC1_CASCADE: u8 = 0x04;
@@ -13,14 +14,12 @@ const ICW4_8086: u8 = 0x01;
 const PIC1_OFFSET: u8 = 0x20;  // offset of 32 to master
 const PIC2_OFFSET: u8 = 0x28;  // offset of 40 to slave
 
-const PIC_EOI: u8 = 0x20;
-
 const IDT_ENTRY_COUNT: usize = 256;
 
 static mut KERNEL_IDT: [IDTEntry; IDT_ENTRY_COUNT] = [IDTEntry::set_zero(); IDT_ENTRY_COUNT];
 static mut IDT_DESCRIPTOR: IDTPointer = IDTPointer { limit: 0, base: 0 };
 
-struct IDT;
+pub struct IDT;
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C, packed)]
@@ -48,11 +47,11 @@ enum AccessLevel {
     UserMode = 3,
 }
 
-struct PIC;
+pub struct PIC;
 
 impl PIC {
 
-    fn remap_PIC() {
+    pub fn remap_PIC() {
         unsafe {
             let mut mask_1: u8;
             let mut mask_2: u8;
@@ -104,12 +103,48 @@ impl IDT {
     pub unsafe fn initialize() {
         unsafe {
             // set up IDT and interrupt handlers
+            KERNEL_IDT[0x03] = IDTEntry::set_gate(   //breakpoint
+                InterruptHandler::handle_bp as *const () as u32,
+                0x08u16,
+                0x0E,
+                AccessLevel::KernelMode,
+                true
+            );
+            KERNEL_IDT[0x08] = IDTEntry::set_gate(   //double fault
+                InterruptHandler::handle_dbf as *const () as u32, 
+                0x08u16,
+                0x0E,
+                AccessLevel::KernelMode,
+                true
+            );
+            KERNEL_IDT[0x0D] = IDTEntry::set_gate(   //general protection fault
+                InterruptHandler::handle_gpf as *const () as u32, 
+                0x08u16,
+                0x0E,
+                AccessLevel::KernelMode,
+                true
+            );
+            KERNEL_IDT[0x20] = IDTEntry::set_gate(   //PIT timers
+                InterruptHandler::handle_pit as *const () as u32, 
+                0x08u16,
+                0x0E,
+                AccessLevel::KernelMode,
+                true
+            );
+            KERNEL_IDT[0x21] = IDTEntry::set_gate(   //keyboard input
+                InterruptHandler::handle_kbd as *const () as u32, 
+                0x08u16,
+                0x0E,
+                AccessLevel::KernelMode,
+                true
+            );
 
             IDT_DESCRIPTOR = IDTPointer {
                 limit: (core::mem::size_of::<IDTEntry>() * IDT_ENTRY_COUNT - 1) as u16,
                 base: &raw const KERNEL_IDT as *const IDTEntry as u32,
             };
             arch::asm!("lidt [{ptr}]", ptr = in(reg) &raw const IDT_DESCRIPTOR, options(nostack, preserves_flags));
+            arch::asm!("sti", options(nostack, preserves_flags));
         }
     }
 

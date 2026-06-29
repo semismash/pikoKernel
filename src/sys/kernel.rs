@@ -29,6 +29,10 @@ pub fn main() -> ! {
         let entry_count = (desc.limit + 1) / 8;
         let gdt_ptr = desc.base as *const u64;
 
+        //set up IDT
+        i686::idt::PIC::remap_PIC();
+        i686::idt::IDT::initialize();
+
         //enable text and cursor
         i686::vga::enable_cursor(14, 15);
 
@@ -48,8 +52,8 @@ pub fn main() -> ! {
         sys::console::println!(", what's up?", FGColor::Magenta);
         
 
-        time::delay_seconds(2);
-        panic!("asfdfasdfasgdewgw");
+        //time::delay_seconds(2);
+        //panic!("asfdfasdfasgdewgw");
         //local_buffer.clear_screen(frame);
     }
 
