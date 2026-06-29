@@ -4,8 +4,6 @@ use core::arch;
 const PIC_EOI: u8 = 0x20;
 const KBD_PORT: u16 = 0x60;
 
-pub const PIT_FREQ: usize = 1_193_182; // Hz
-
 pub struct InterruptHandler;
 
 #[repr(C)]
@@ -62,6 +60,8 @@ impl InterruptHandler {
                 options(nomem, nostack, preserves_flags)
             );
         }
+        //crate::sys::console::clear!();
+        //crate::sys::console::write_and_flush!("Tick: {}", crate::sys::time::SysTime::get_ticks());
         crate::sys::time::SysTime::tick();
     }
 
@@ -75,8 +75,8 @@ impl InterruptHandler {
                 out("al") scancode, 
                 options(nomem, nostack, preserves_flags)
             );
-            crate::sys::console::clear!();
-            crate::sys::console::write_and_flush!("Key scancode: {:#X}", scancode);
+            //crate::sys::console::clear!();
+            //crate::sys::console::write_and_flush!("Key scancode: {:#X}", scancode);
             arch::asm!(
                 "out dx, al",
                 in("dx") crate::arch::i686::idt::PIC1_COMMAND,

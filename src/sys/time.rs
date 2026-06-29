@@ -1,12 +1,6 @@
 use crate::arch::i686::isr;
 use core::sync::atomic::{AtomicU32, Ordering};
 
-const SYSTEM_FREQ: usize = 1000; // in Hz
-const DIVISOR: u16 = { 
-    let div = (isr::PIT_FREQ + (SYSTEM_FREQ / 2)) / SYSTEM_FREQ;
-    if (div >= 65536) { 0 } else { div as u16 }
-};
-
 pub static SYSTEM_TICKS: AtomicU32 = AtomicU32::new(0);
 
 pub struct SysTime;

@@ -1,6 +1,7 @@
 use core::{ascii::Char, mem::MaybeUninit};
 use core::ptr::{write, write_volatile};
 use core::fmt;
+use crate::sys;
 //use core::cell::SyncUnsafeCell;
 
 pub const BUFFER_WIDTH: usize = 80;
@@ -20,6 +21,7 @@ pub struct VGAWriter {
     row_pos: usize,
     col_pos: usize,
     on_cursor_update: Option<fn(usize, usize)>,
+    last_tick: u32, // for concurrency and synchronization
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -106,6 +108,7 @@ impl VGAWriter {
             row_pos: 0,
             col_pos: 0,
             on_cursor_update: on_cursor_update,
+            last_tick: 0,
         };
         new_buf
     }
@@ -169,7 +172,7 @@ impl VGAWriter {
         }
     }
 
-    pub unsafe fn flush(&self, frame_buf: FramePointer) {
+    unsafe fn flush(&self, frame_buf: FramePointer) {
         unsafe {
             let src_ptr = self.buffer.as_ptr() as *const u16;
             let dst_ptr = frame_buf.0.as_mut_ptr() as *mut u16;
@@ -182,6 +185,14 @@ impl VGAWriter {
             let checked_row = if self.row_pos >= BUFFER_HEIGHT { BUFFER_HEIGHT - 1 } else { self.row_pos };
             fn_cursor_update(checked_row, self.col_pos);
         }
+    }
+
+    pub unsafe fn flush_sync(&mut self, frame_buf: FramePointer) {
+        let mut last = self.last_tick;
+        crate::sys::time::SysTime::on_tick(&mut last, || {
+            self.flush(frame_buf);
+        });
+        self.last_tick = last;
     }
 
     pub fn clear(&mut self) {
@@ -237,7 +248,7 @@ macro_rules! print {
         {
             let res = $crate::drivers::display::to_buf!($buf, $($args)*);
             if res.is_ok() {
-                unsafe { $buf.flush($frame); }
+                unsafe { $buf.flush_sync($frame); }
             }
             res
         }
@@ -262,7 +273,7 @@ macro_rules! println {
                 );
                 let nl_res = $buf.write_char_to_buf(nl_char);
                 if nl_res.is_ok() {
-                    unsafe { $buf.flush($frame); }
+                    unsafe { $buf.flush_sync($frame); }
                 }
                 nl_res
             } else {
@@ -281,7 +292,7 @@ impl VGAWriter {
     pub fn clear_screen(&mut self, frame_buf: FramePointer) {
         unsafe {
             self.clear();
-            self.flush(frame_buf);
+            self.flush_sync(frame_buf);
         }
     }
 
@@ -307,14 +318,14 @@ impl fmt::Write for VGAWriter {
 macro_rules! write_and_flush {
     ($buf:expr, $frame:expr) => { 
         unsafe {
-            $buf.flush($frame);
+            $buf.flush_sync($frame);
         }
     };
     ($buf:expr, $frame:expr, $fmt:expr $(, $($args:tt)*)?) => {
         {
             use core::fmt::Write;
             core::write!($buf, $fmt $(, $($args)*)?)
-                .map(|_| $buf.flush($frame))
+                .map(|_| $buf.flush_sync($frame))
         }
     };
     ($($invalid:tt)*) => {

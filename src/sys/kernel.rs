@@ -29,9 +29,10 @@ pub fn main() -> ! {
         let entry_count = (desc.limit + 1) / 8;
         let gdt_ptr = desc.base as *const u64;
 
-        //set up IDT
+        //set up IDT and PIT
         i686::idt::PIC::remap_PIC();
         i686::idt::IDT::initialize();
+        i686::pit::PIT::initialize();
 
         //enable text and cursor
         i686::vga::enable_cursor(14, 15);

@@ -58,7 +58,7 @@ pub(crate) use write;
 macro_rules! write_and_flush {
     () => {
         unsafe {
-            (*&raw mut $crate::sys::console::OS_BUFFER).flush($crate::sys::console::FRAME);
+            (*&raw mut $crate::sys::console::OS_BUFFER).flush_sync($crate::sys::console::FRAME);
         }
     };
     ($fmt:expr $(, $($args:tt)*)?) => {
