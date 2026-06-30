@@ -2,11 +2,14 @@ use crate::drivers::display;
 use crate::drivers::display::{DisplayWriter, BUFFER_WIDTH, BUFFER_HEIGHT};
 use crate::arch::i686::vga;
 use core::fmt::Write;
+use crate::drivers::input::{Input};
 
 pub(crate) static mut OS_BUFFER: DisplayWriter = DisplayWriter::new(Some(vga::update_cursor));
 pub(crate) static FRAME: display::FramePointer = display::FramePointer(
     vga::VGA_BUFFER_ADR as *mut [[u16; BUFFER_WIDTH]; BUFFER_HEIGHT]
 );
+
+pub(crate) static mut INPUT_BUFFER: Input = Input::new();
 
 macro_rules! print {
     ($($args:tt)*) => {

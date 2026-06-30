@@ -130,7 +130,8 @@ impl Input {
 
     pub fn execute_action(&self) {
         match self.cur_action {
-
+            AddChar(ch) => self.buffer.write_char(ch),
+            _ => {} // to be added later
         }
     }
 
