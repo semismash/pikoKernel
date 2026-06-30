@@ -1,11 +1,14 @@
 use core::ascii::Char;
+use core::ops::Add;
 
 use crate::arch::i686::kbd;
 use crate::arch::i686::kbd::Key::{self, KpStar};
 use crate::drivers::input;
+use crate::drivers::input::InputAction::{AddChar, Cancel, DelCharBack, Submit};
 
 const BUFFER_WIDTH: usize = 80;
 const BUFFER_HEIGHT: usize = 25;
+const BUFFER_CAPACITY: usize = BUFFER_WIDTH * BUFFER_HEIGHT;
 
 type CharBuffer = [[Char; BUFFER_WIDTH]; BUFFER_HEIGHT];
 
@@ -19,14 +22,15 @@ pub struct InputBuffer {
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum InputAction {
     AddChar(Char),
-    DelChar,
+    DelCharFront,
+    DelCharBack,
     Submit,
     Cancel,
 }
 
 pub struct Input {
     buffer: InputBuffer,
-    cur_action: Option<InputAction>,
+    cur_action: InputAction,
     cur_keypress: Key,
     is_shift: bool,
     is_ctrl: bool,
@@ -36,7 +40,61 @@ pub struct Input {
     scrl_lock: bool,
 }
 
+pub enum InputError {
+    WriteError,
+}
+
+impl InputBuffer {
+    
+    fn write_char(&mut self, ch: Char) -> Result<(), InputError> {
+        if self.get_offset() < BUFFER_CAPACITY {
+            unsafe {
+                if self.col_pos >= BUFFER_WIDTH {
+                    self.row_pos += 1;
+                    self.col_pos = 0;
+                }
+                let char_ptr = self.buffer
+                    .get_unchecked_mut(self.row_pos)
+                    .get_unchecked_mut(self.col_pos)
+                    as *mut Char;
+                core::ptr::write(char_ptr, ch);
+                self.col_pos += 1;
+                Ok(())
+            }
+        } else {
+            Err(InputError::WriteError)
+        }
+    }
+
+    /*fn del_char(&mut self) {
+
+    }*/
+
+    fn get_offset(&mut self) {
+        (self.row_pos * BUFFER_WIDTH) + self.col_pos
+    }
+
+}
+
 impl Input {
+
+    pub fn new() -> Self {
+        Self {
+            buffer: InputBuffer { 
+                buffer: [[Char::Null; BUFFER_WIDTH]; BUFFER_HEIGHT],
+                row_pos: 0,
+                col_pos: 0,
+            },
+            cur_action: None,
+            cur_keypress: Key::default(),
+            is_shift: false,
+            is_ctrl: false,
+            is_bool: false,
+            caps_lock: false,
+            num_lock: false,
+            scrl_lock: false,
+        }
+    }
 
     pub fn is_shift(&mut self, state: bool) { self.is_shift = state; }
     pub fn is_ctrl(&mut self, state: bool) { self.is_ctrl = state; }
@@ -45,8 +103,33 @@ impl Input {
     pub fn is_numlk(&mut self, state: bool) { self.num_lock = state; }
     pub fn is_scrllk(&mut self, state: bool) { self.scrl_lock = state; }
 
-    pub fn update_action(&mut self) {
-        if (self.is_shift | self.caps_lock) {
+    pub fn update_action(&mut self, key: Key) {
+        let cur_char_res = map_key_to_char(key);
+        if let Some(cur_char) = cur_char_res {
+            let updated_char_res = 
+            match (self.is_shift, self.caps_lock) {
+                (false, false) => { None },
+                (true, _) => { map_shift(cur_char) }, // shift + caps to be separated later
+                (true, true) => { map_caps(cur_char) }
+            }
+            if let Some(updated_char) = updated_char_res {
+                self.cur_action = AddChar(updated_char);
+            } else {
+                self.cur_action = AddChar(cur_char);
+            }
+        } else {
+            match key {
+                Key::Bksp => { self.cur_action = DelCharBack; },
+                //Key:: => { self.cur_action = DelCharBack; },      // to be added later
+                Key::Enter => { self.cur_action = Submit; },
+                Key::Esc => { self.cur_action = Cancel; },
+                _ => {}
+            }
+        }
+    }
+
+    pub fn execute_action(&self) {
+        match self.cur_action {
 
         }
     }
