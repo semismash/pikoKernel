@@ -75,6 +75,7 @@ impl InterruptHandler {
                 out("al") scancode, 
                 options(nomem, nostack, preserves_flags)
             );
+            
             //crate::sys::console::clear!();
             //crate::sys::console::write_and_flush!("Key scancode: {:#X}", scancode);
             arch::asm!(

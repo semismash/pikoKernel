@@ -3,3 +3,4 @@ pub mod gdt;
 pub mod idt;
 pub mod isr;
 pub mod pit;
+pub mod kbd;
