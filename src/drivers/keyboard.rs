@@ -1,6 +1,6 @@
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u16)]
-enum Key {
+pub enum Key {
     #[default] None = 0x00u16, 
     Esc = 0x01u16,
     Num1 = 0x02u16, Num2 = 0x03u16, Num3 = 0x04u16, Num4 = 0x05u16, Num5 = 0x06u16,
@@ -29,4 +29,29 @@ enum Key {
     Kp1 = 0x4Fu16, Kp2 = 0x50u16, Kp3 = 0x51u16,
     Kp0 = 0x52u16, KpPeriod = 0x53u16,
     F11 = 0x57u16, F12 = 0x58u16,
+}
+
+#[repr(C, align(8))]
+pub struct Keyboard {
+    keypress_map: [u8; 16],     // 1 means pressed, 0 means released
+}
+
+impl Keyboard {
+
+    pub fn chk_pressed (&self, key_press: Key) -> bool {
+        let byte_idx = (key_press as u8) >> 3;  //divide by 8
+        let bit_idx = (key_press as u8) & 0x7;  //mod by 8
+        ((self.keypress_map[byte_idx] >> bit_idx) & 0x01) == 1
+    }
+
+    pub fn update_press (&mut self, key_press: Key, pressed: bool) {
+        let byte_idx = (key_press as u8) >> 3;
+        let bit_idx = (key_press as u8) & 0x7;
+        if pressed {
+            self.keypress_map[byte_idx] |= 1 << bit_idx;
+        } else {
+            self.keypress_map[byte_idk] |= !(1 << bit_idx);
+        }
+    }
+
 }

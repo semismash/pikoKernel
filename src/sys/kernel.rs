@@ -1,5 +1,6 @@
 use crate::arch::i686;
 use crate::arch::i686::gdt::GDTPointer;
+use crate::drivers::BackgroundColor::Green;
 use crate::drivers::display::ForegroundColor as FGColor;
 use crate::drivers::display::BackgroundColor as BGColor;
 use crate::drivers::display;
@@ -47,7 +48,7 @@ pub fn main() -> ! {
         sys::console::write_and_flush!();
 
         //test delay
-        crate::sys::time::SysTime::delay(5000);
+        crate::sys::time::SysTime::delay(2000);
 
         sys::console::println!("Hey, what's up :D!");
         sys::console::println!("Hey, what's up :D! (but it's red)", FGColor::Red);
@@ -55,7 +56,12 @@ pub fn main() -> ! {
         sys::console::print!("Rustacean", FGColor::Yellow);
         sys::console::println!(", what's up?", FGColor::Magenta);
 
-        //time_test::delay_seconds(2);
+        for i in 0..9 {
+            sys::console::print!("Tung ", FGColor::Yellow);
+        }
+        sys::console::println!("Sahur", FGColor::Green);
+
+        //time::delay(2);
         //panic!("asfdfasdfasgdewgw");
         //local_buffer.clear_screen(frame);
     }
