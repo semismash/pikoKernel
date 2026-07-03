@@ -1,13 +1,12 @@
 use core::ascii::Char;
 
+use crate::arch::i686::kbd::Key::P;
 use crate::arch::i686::kbd::{self, Keyboard, Key};
 use crate::arch::i686::kbd::KeyPress as KP;
 use crate::drivers::input;
 use crate::drivers::input::InputAction::{AddChar, Cancel, DelCharBack, Submit};
 
-const BUFFER_WIDTH: usize = 80;
-const BUFFER_HEIGHT: usize = 25;
-const BUFFER_CAPACITY: usize = BUFFER_WIDTH * BUFFER_HEIGHT;
+const BUFFER_LENGTH: usize = 256;
 
 const KEYSTROKE_MAX_COUNT: usize = 256;
 const KEYSTROKE_CAPACITY: usize = 8;   //max 8 keystrokes per keystroke, implemented by software, practically will never reach this high
@@ -23,24 +22,19 @@ static KEYSTROKE_TABLE: [KeyStrokeEntry; KEYSTROKE_MAX_COUNT] = create_keystroke
     KS::PutCSmallC => [KP::new(Key::B, false)],
 );
 
-type CharBuffer = [[Char; BUFFER_WIDTH]; BUFFER_HEIGHT];
+type CharBuffer = [Char; BUFFER_LENGTH];
 #[repr(C)]
 pub struct InputBuffer {
-    buffer: CharBuffer,
-    row_pos: usize,
-    col_pos: usize,
-}
-
-enum EchoMode {
-
+    pub buffer: CharBuffer,
+    pub idx: usize,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
 pub enum InputAction {
     None,
     AddChar(Char),
-    DelCharFront,
-    DelCharBack,
+    DelChar,
+    BackChar,
     Submit,
     Cancel,
 }
@@ -51,86 +45,74 @@ pub enum InputError {
 
 impl InputBuffer {
 
-    fn initialize() -> Self {
+    fn new() -> Self {
         Self {
-            buffer: [[Char::Null; BUFFER_WIDTH]; BUFFER_HEIGHT],
-            row_pos: 0,
-            col_pos: 0,
+            buffer: [Char::Null; BUFFER_LENGTH],
+            idx: 0,
         }
     }
 
-    fn clear_buffer (&mut self) {
-        unsafe {
-            for i in 0..BUFFER_HEIGHT {
-                for j in 0..BUFFER_WIDTH {
-                    let buf_ptr = self.buffer
-                        .get_unchecked_mut(i)
-                        .get_unchecked_mut(j) as *mut Char;
-                    core::ptr::write(
-                        buf_ptr, 
-                        Char::Null,
-                    );
-                }
-            }
+    fn execute_action(&mut self, action: InputAction) -> Result<(), InputError> {
+        match action {
+            InputAction::None => { },
+            InputAction::AddChar(ch) => { self.write_char(ch)?; },
+            InputAction::DelChar => { self.del_char(); },
+            InputAction::BackChar => { self.back_char(); },
+            InputAction::Submit => { self.new_line(); },
+            InputAction::Cancel => { self.clear_buffer(); },
         }
-        self.row_pos = 0;
-        self.col_pos = 0;
+        Ok(())
+    }
+
+}
+
+//buffer actions
+impl InputBuffer {
+
+    pub fn clear_buffer (&mut self) {
+        unsafe {
+            let buf_ptr = self.buffer.as_mut_ptr(); 
+            core::ptr::write_bytes(buf_ptr, 0x00, BUFFER_LENGTH);   //Char::Null = 0x00
+        }
+        self.idx = 0;
     }
     
-    fn write_char(&mut self, ch: Char) -> Result<(), InputError> {
-        if self.get_offset() < BUFFER_CAPACITY {
+    pub fn write_char(&mut self, ch: Char) -> Result<(), InputError> {  
+        //currently, directly changes the character that row and col point to
+        //needs to be changed between insert mode and add mode, the latter will move the remaining text in the buffer up
+        if self.idx < BUFFER_LENGTH {
             unsafe {
-                if self.col_pos >= BUFFER_WIDTH {
-                    self.row_pos += 1;
-                    self.col_pos = 0;
-                }
-                let char_ptr = self.buffer
-                    .get_unchecked_mut(self.row_pos)
-                    .get_unchecked_mut(self.col_pos)
-                    as *mut Char;
-                core::ptr::write(char_ptr, ch);
-                self.col_pos += 1;
-                Ok(())
+                let mut idx_ptr = &mut self.buffer[self.idx] as *mut Char;
+                core::ptr::write(idx_ptr, ch);
+                self.idx += 1;
             }
+            Ok(())
         } else {
             Err(InputError::WriteError)
         }
     }
 
-    fn back_char(&mut self) {
-        if (self.get_offset() > 0) {
+    pub fn back_char(&mut self) {
+        if (self.idx > 0) {
             unsafe {
-                let char_ptr = self.buffer
-                    .get_unchecked_mut(self.row_pos)
-                    .get_unchecked_mut(self.col_pos)
-                    as *mut Char;
-                core::ptr::copy(char_ptr, char_ptr.sub(1), BUFFER_CAPACITY - self.get_offset() - 1);
-                char_ptr -= 1;
+                let idx_ptr = &mut self.buffer[self.idx] as *mut Char;
+                core::ptr::copy(idx_ptr, idx_ptr.sub(1), BUFFER_LENGTH - self.idx - 1);
+                self.idx -= 1;
             }
         }
     }
 
-    fn del_char(&mut self) {
-        if (self.get_offset() < BUFFER_CAPACITY - 1) {
+    pub fn del_char(&mut self) {
+        if (self.get_offset() < BUFFER_LENGTH - 1) { 
             unsafe {
-                let char_ptr = self.buffer
-                    .get_unchecked_mut(self.row_pos)
-                    .get_unchecked_mut(self.col_pos)
-                    as *mut Char;
-                core::ptr::copy(char_ptr.add(1), char_ptr, BUFFER_CAPACITY - self.get_offset() - 1);
+                let idx_ptr = &mut self.buffer[self.idx] as *mut Char;
+                core::ptr::copy(idx_ptr.add(1), idx_ptr, BUFFER_LENGTH - self.idx - 1);
             }
         }
     }
 
-    fn new_line(&mut self) {
-        if self.row_pos < BUFFER_HEIGHT {
-            self.row_pos += 1;
-            self.col_pos = 0;
-        }
-    }
-
-    fn get_offset(&mut self) -> usize {
-        (self.row_pos * BUFFER_WIDTH) + self.col_pos
+    pub fn new_line(&mut self) -> Result<(), InputError> {
+        self.write_char(Char::LineFeed)
     }
 
 }

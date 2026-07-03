@@ -2,6 +2,7 @@ use core::{ascii::Char};
 use core::ptr::{write, write_volatile};
 use core::fmt;
 use crate::sys;
+use crate::drivers::input::InputBuffer;
 //use core::cell::SyncUnsafeCell;
 
 pub const BUFFER_WIDTH: usize = 80;
@@ -20,6 +21,8 @@ pub struct DisplayWriter {
     buffer: Buffer,
     row_pos: usize,
     col_pos: usize,
+    offset: usize,
+    input_frame: usize,
     on_cursor_update: Option<fn(usize, usize)>,
     last_tick: u32, // for concurrency and synchronization
 }
@@ -37,6 +40,7 @@ pub enum VGAError {
     #[default] UnknownError,
     WriteError,
     InvalidASCIIError,
+    CopyFromInputError,
 }
 
 #[allow(dead_code)]
@@ -107,21 +111,25 @@ impl DisplayWriter {
             buffer: [[ScreenCharacter { ascii_char: 0x20, attribute: 0x0F, }; BUFFER_WIDTH]; BUFFER_HEIGHT],
             row_pos: 0,
             col_pos: 0,
+            offset: 0,
+            input_frame: 0,
             on_cursor_update: on_cursor_update,
             last_tick: 0,
         }
     }
 
     pub fn write_char_to_buf(&mut self, char: ScreenCharacter) -> Result<(), VGAError> {
-        if self.get_offset() < BUFFER_CAPACITY {
+        if self.offset < BUFFER_CAPACITY {
             unsafe {
                 if char.ascii_char == 0x0A { /* \n hex is 0x0A */
                     self.row_pos += 1;
                     self.col_pos = 0;
+                    self.offset = self.get_offset();
                 } else {
                     if self.col_pos >= BUFFER_WIDTH {
                         self.row_pos += 1;
                         self.col_pos = 0;
+                        self.offset = self.get_offset();
                     }
                     let char_ptr = self.buffer
                         .get_unchecked_mut(self.row_pos)
@@ -129,6 +137,7 @@ impl DisplayWriter {
                         as *mut ScreenCharacter;
                     core::ptr::write(char_ptr, char);
                     self.col_pos += 1;
+                    self.offset += 1;
                 }
                 Ok(())
             }
@@ -153,7 +162,7 @@ impl DisplayWriter {
         if !text.is_ascii() {
             Err(VGAError::InvalidASCIIError)
         } else {
-            if text.len() <= (BUFFER_CAPACITY) - self.get_offset() {
+            if text.len() <= (BUFFER_CAPACITY) - self.offset {
                 for ch in text.chars() {
                     let ascii_ch = unsafe { core::ascii::Char::from_u8_unchecked(ch as u8) };
                     let screen_ch = ScreenCharacter::new(
@@ -213,10 +222,16 @@ impl DisplayWriter {
         }
         self.row_pos = 0;
         self.col_pos = 0;
+        self.offset = 0;
     }
 
     fn get_offset(&self) -> usize {
         (self.row_pos * BUFFER_WIDTH) + self.col_pos
+    }
+
+    fn update_row_and_col(&mut self) {
+        self.row_pos = self.offset / BUFFER_WIDTH;
+        self.col_pos = self.offset % BUFFER_WIDTH;
     }
 
 }
@@ -296,7 +311,7 @@ impl DisplayWriter {
     }
 
     pub fn check_if_full(&self) -> bool {
-        if (BUFFER_CAPACITY - self.get_offset()) <= 0 {
+        if (BUFFER_CAPACITY - self.offset) <= 0 {
             true
         } else {
             false
@@ -332,3 +347,34 @@ macro_rules! write_and_flush {
     };
 }
 pub(crate) use write_and_flush;
+
+impl DisplayWriter {
+
+    pub fn copy_from_input_buf(&mut self, input_buf: &InputBuffer) -> Result<(), VGAError> {
+
+        let input_offset = input_buf.get_offset();
+        if input_offset < BUFFER_CAPACITY - self.offset - 1 {
+            let frame_idx = self.input_frame;
+            unsafe {
+                let input_frame_ptr: *mut ScreenCharacter = &mut self.buffer[frame_idx] as *mut ScreenCharacter;
+                let input_buf_ptr: *const Char = input_buf.buffer.as_ptr() as *const Char;
+                for i in 0..input_offset { 
+                    core::ptr::write(
+                        input_frame_ptr.add(i),
+                        ScreenCharacter { 
+                            ascii_char: (*input_buf_ptr.add(i)).to_u8(), // conv to u8
+                            attribute: 0x00,
+                        }
+                    );
+                }
+            }
+            self.offset += input_offset;
+            self.update_row_and_col();
+            Ok(())
+        } else {
+            Err(VGAError::CopyFromInputError)
+        }
+
+    }
+
+}

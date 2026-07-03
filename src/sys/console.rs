@@ -1,7 +1,9 @@
 use crate::drivers::display;
 use crate::drivers::display::{DisplayWriter, BUFFER_WIDTH, BUFFER_HEIGHT};
 use crate::arch::i686::vga;
+use crate::sys::EchoMode::Immediate;
 use core::fmt::Write;
+use core::ascii::Char;
 use crate::drivers::input::{Input};
 
 pub(crate) static mut OS_BUFFER: DisplayWriter = DisplayWriter::new(Some(vga::update_cursor));
@@ -10,6 +12,50 @@ pub(crate) static FRAME: display::FramePointer = display::FramePointer(
 );
 
 pub(crate) static mut INPUT_BUFFER: Input = Input::new();
+
+pub enum EchoMode {
+    None,
+    Immediate,
+    OnEnter,
+    Silent,
+    Masked(Char)
+}
+
+pub struct Console {
+    echo_mode: EchoMode,
+}
+
+impl Console {
+
+    pub fn initialize() -> Self {
+        Self {
+            echo_mode: EchoMode::Immediate,
+        }
+    }
+
+    pub fn set_echo_mode(&mut self, new_echo_mode: EchoMode) {
+        self.echo_mode = new_echo_mode;
+    }
+
+    pub fn update_input(&self) {
+        match self.echo_mode {
+            EchoMode::None => {},
+            EchoMode::Immediate => {
+                
+            },
+            EchoMode::OnEnter => {
+                
+            },
+            EchoMode::Silent => {
+
+            },
+            Echonode::Masked(mask_char) => {
+
+            },
+        }
+    }
+
+}
 
 macro_rules! print {
     ($($args:tt)*) => {
