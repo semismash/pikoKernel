@@ -87,8 +87,10 @@ impl InputBuffer {
     pub fn back_char(&mut self) {
         if (self.idx > 0) {
             unsafe {
-                let idx_ptr = &mut self.buffer[self.idx] as *mut Char;
-                core::ptr::copy(idx_ptr, idx_ptr.sub(1), BUFFER_LENGTH - self.idx - 1);
+                let src_ptr: *const Char = &self.buffer[self.idx] as *const Char;
+                let dest_ptr: *mut Char = &mut self.buffer[self.idx - 1] as *mut Char;
+                core::ptr::copy(src_ptr, dest_ptr, BUFFER_LENGTH - self.idx);
+                self.buffer[BUFFER_LENGTH - 1] = Char::Null; // set final slot to null
                 self.idx -= 1;
             }
         }
@@ -167,6 +169,7 @@ pub enum KeyStroke {
     PutCSmallX,
     PutCSmallY,
     PutCSmallZ,
+    Space,
     Backspace,
     Delete,
 }
@@ -207,8 +210,9 @@ impl KeyStroke {
             KS::PutCSmallX => InputAction::AddChar(Char::SmallX),
             KS::PutCSmallY => InputAction::AddChar(Char::SmallY),
             KS::PutCSmallZ => InputAction::AddChar(Char::SmallZ),
-            KS::Backspace => InputAction::BackChar,
-            KS::Delete => InputAction::DelChar,
+            KS::Space      => InputAction::AddChar(Char::Space),
+            KS::Backspace  => InputAction::BackChar,
+            KS::Delete     => InputAction::DelChar,
             //catch all
             _ => InputAction::None,
         }
@@ -321,6 +325,7 @@ static KEYSTROKE_TABLE: [KeyStrokeEntry; KEYSTROKE_MAX_COUNT] = create_keystroke
     KS::PutCSmallX => [KP::new(Key::X, false)],
     KS::PutCSmallY => [KP::new(Key::Y, false)],
     KS::PutCSmallZ => [KP::new(Key::Z, false)],
+    KS::Space      => [KP::new(Key::Space, false)],
     KS::Delete     => [KP::new(Key::Tab, false)],
     KS::Backspace  => [KP::new(Key::Bksp, false)],
 );

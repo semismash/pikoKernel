@@ -118,7 +118,9 @@ impl Keyboard {
                         let kp = &mut KEYPRESS_STACK[i as usize];
                         if kp.get_keycode() == (scancode & !RELEASE_BYTE) {
                             let kp_ptr = kp as *mut KeyPress;
-                            ptr::copy(kp_ptr.add(1), kp_ptr, (KEYPRESS_STACK_POINTER - i) as usize); 
+                            //ptr::copy(kp_ptr.add(1), kp_ptr, (KEYPRESS_STACK_POINTER - i) as usize); 
+                            let shift_count = (KEYPRESS_STACK_POINTER - 1 - i) as usize;
+                            ptr::copy(kp_ptr.add(1), kp_ptr, shift_count); 
                             // above, kp_ptr + 1 is safe because of the extra padding byte we added earlier
                             KEYPRESS_STACK_POINTER -= 1;
                             break;

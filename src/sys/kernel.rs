@@ -34,7 +34,7 @@ pub fn main() -> ! {
         //enable text and cursor
         i686::vga::enable_cursor(14, 15);
 
-        sys::console::write!("Value of CS is {:X}\n", cs);
+        /*sys::console::write!("Value of CS is {:X}\n", cs);
         sys::console::write!("Value of DS is {:X}\n", ds);
 
         for i in 0..entry_count {
@@ -47,7 +47,7 @@ pub fn main() -> ! {
         crate::sys::time::SysTime::delay(2000);
 
         sys::console::println!("OS BOOTED!");
-        /*sys::console::println!("Red colored texted", FGColor::Red);
+        sys::console::println!("Red colored texted", FGColor::Red);
         sys::console::print!("I'm a ", FGColor::Magenta);
         sys::console::print!("Rustacean", FGColor::Yellow);
         sys::console::println!(", what's up?", FGColor::Magenta);
