@@ -201,7 +201,7 @@ impl DisplayWriter {
                     let buf_ptr = self.buffer
                         .get_unchecked_mut(i)
                         .get_unchecked_mut(j) as *mut ScreenCharacter;
-                    core::ptr::write_volatile(
+                    core::ptr::write(
                         buf_ptr, 
                         ScreenCharacter { 
                             ascii_char: 0x20,

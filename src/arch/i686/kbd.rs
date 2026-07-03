@@ -46,7 +46,11 @@ pub enum Key {
     F11 = 0x57u8, F12 = 0x58u8,
 }
 
-pub struct Keyboard;
+pub struct Keyboard {
+    capslk_on: bool,
+    numlk_on: bool,
+    scrllk_on: bool,
+}
 
 #[derive(Debug, Clone, Copy)]
 #[repr(C)]
@@ -56,11 +60,11 @@ pub struct KeyPress {
 
 impl KeyPress {
     pub const fn new(
-        keycode: u16,
+        keycode: Key,
         extended: bool,
     ) -> Self {
         Self {
-            keypress_data: AtomicU16::new(keycode | (extended as u16) << 8)
+            keypress_data: AtomicU16::new(keycode as u16 | (extended as u16) << 8)
         }
     }
 
@@ -78,13 +82,21 @@ impl KeyPress {
 
 impl Keyboard {
 
-    pub fn update_keypress(scancode: u8) {
+    pub fn initialize() -> Self {
+        Self {
+            capslk_on: false,
+            numlk_on: false,
+            scrllk_on: false,
+        }
+    }
+
+    pub fn update_keypress(&self, scancode: u8) {
         unsafe {
-            if scancode == EXTENDED_BYTE {
+            if scancode == EXTENDED_BYTE {  // IMPLEMENT caps, num and scroll lock
                 IS_EXTENDED = true;
             } else {
                 let is_release = (scancode & RELEASE_BYTE) >> 6 == 1;
-                let keypress = KeyPress::new(scancode as u16, IS_EXTENDED);
+                let keypress = KeyPress { keypress_data: AtomicU16::new(scancode as u16 | (IS_EXTENDED as u16) << 8) };
                 if !is_release {
                     if KEYPRESS_STACK_POINTER < KEYPRESS_STACK_LENGTH - 1 {    //cap to stack length - 1 for one byte of safety padding at the end
                         KEYPRESS_STACK[KEYPRESS_STACK_POINTER] = keypress;
@@ -103,7 +115,8 @@ impl Keyboard {
                         }
                     }
                 }
-                move_into_input_driver_func(keypress);
+                //move_into_input_driver_func(keypress);
+                call_input_driver_func(self.capslk_on, self.numlk_on, self.scrllk_on);
                 IS_EXTENDED = false;
             }
         }

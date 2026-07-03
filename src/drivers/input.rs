@@ -1,6 +1,6 @@
 use core::ascii::Char;
 
-use crate::arch::i686::kbd::{self, Keyboard};
+use crate::arch::i686::kbd::{self, Keyboard, Key};
 use crate::arch::i686::kbd::KeyPress as KP;
 use crate::drivers::input;
 use crate::drivers::input::InputAction::{AddChar, Cancel, DelCharBack, Submit};
@@ -17,14 +17,22 @@ const _: u8 = [0][(KEYSTROKE_MAX_COUNT >= kbd::KEYPRESS_STACK_LENGTH as usize)];
 
 type KeyStrokeEntry = (KeyStroke, [KP; KEYSTROKE_CAPACITY]);
 static KEYSTROKE_TABLE: [KeyStrokeEntry; KEYSTROKE_MAX_COUNT] = create_keystroke_table!(
-    
+    KS::None => [],
+    KS::PutCSmallA => [KP::new(Key::A, false)],
+    KS::PutCSmallB => [KP::new(Key::B, false)],
+    KS::PutCSmallC => [KP::new(Key::B, false)],
 );
 
+type CharBuffer = [[Char; BUFFER_WIDTH]; BUFFER_HEIGHT];
 #[repr(C)]
 pub struct InputBuffer {
     buffer: CharBuffer,
     row_pos: usize,
     col_pos: usize,
+}
+
+enum EchoMode {
+
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -39,6 +47,92 @@ pub enum InputAction {
 
 pub enum InputError {
     WriteError,
+}
+
+impl InputBuffer {
+
+    fn initialize() -> Self {
+        Self {
+            buffer: [[Char::Null; BUFFER_WIDTH]; BUFFER_HEIGHT],
+            row_pos: 0,
+            col_pos: 0,
+        }
+    }
+
+    fn clear_buffer (&mut self) {
+        unsafe {
+            for i in 0..BUFFER_HEIGHT {
+                for j in 0..BUFFER_WIDTH {
+                    let buf_ptr = self.buffer
+                        .get_unchecked_mut(i)
+                        .get_unchecked_mut(j) as *mut Char;
+                    core::ptr::write(
+                        buf_ptr, 
+                        Char::Null,
+                    );
+                }
+            }
+        }
+        self.row_pos = 0;
+        self.col_pos = 0;
+    }
+    
+    fn write_char(&mut self, ch: Char) -> Result<(), InputError> {
+        if self.get_offset() < BUFFER_CAPACITY {
+            unsafe {
+                if self.col_pos >= BUFFER_WIDTH {
+                    self.row_pos += 1;
+                    self.col_pos = 0;
+                }
+                let char_ptr = self.buffer
+                    .get_unchecked_mut(self.row_pos)
+                    .get_unchecked_mut(self.col_pos)
+                    as *mut Char;
+                core::ptr::write(char_ptr, ch);
+                self.col_pos += 1;
+                Ok(())
+            }
+        } else {
+            Err(InputError::WriteError)
+        }
+    }
+
+    fn back_char(&mut self) {
+        if (self.get_offset() > 0) {
+            unsafe {
+                let char_ptr = self.buffer
+                    .get_unchecked_mut(self.row_pos)
+                    .get_unchecked_mut(self.col_pos)
+                    as *mut Char;
+                core::ptr::copy(char_ptr, char_ptr.sub(1), BUFFER_CAPACITY - self.get_offset() - 1);
+                char_ptr -= 1;
+            }
+        }
+    }
+
+    fn del_char(&mut self) {
+        if (self.get_offset() < BUFFER_CAPACITY - 1) {
+            unsafe {
+                let char_ptr = self.buffer
+                    .get_unchecked_mut(self.row_pos)
+                    .get_unchecked_mut(self.col_pos)
+                    as *mut Char;
+                core::ptr::copy(char_ptr.add(1), char_ptr, BUFFER_CAPACITY - self.get_offset() - 1);
+            }
+        }
+    }
+
+    fn new_line(&mut self) {
+        if self.row_pos < BUFFER_HEIGHT {
+            self.row_pos += 1;
+            self.col_pos = 0;
+        }
+    }
+
+    fn get_offset(&mut self) -> usize {
+        (self.row_pos * BUFFER_WIDTH) + self.col_pos
+    }
+
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -80,17 +174,18 @@ pub fn get_action(keypress_stack: &[KP; KEYPRESS_STACK_LENGTH]) -> InputAction {
                 if (cur_keypress.equals_key(keypress_stack[cur_ptr])) {
                     candidate = j;
                     candidate_count += 1;
+                } else {
+                    bitmask &= !(1 << i);   // turn bit off if not valid
                 }
             }
         }
         match candidate_count {
-            0 => { return InputAction::None; },
-            1 => { 
-                return 
-            }
+            0 => { return InputAction::None; }, // reached end/ambiguous, exit early with default action None (TO BE CHANGEGD LATER TO CHECKING THE MOST RECENT KEYPRESS)
+            1 => { return (KEYSTROKE_TABLE[candidate].0).match_key_stroke_to_action(); },   // if 1 matches, it is the correct one
+            _ => {},    // ambiguous, ignore and go through loop as normal
         }
     }
-    InputAction::None
+    InputAction::None   // reached end/ambiguous, exit early with default action None
 }
 
 const fn create_keystroke_table(inputs: [KeyStrokeMacroInputRow; KEYSTROKE_MAX_COUNT]) -> [KeyStrokeEntry; KEYSTROKE_MAX_COUNT] {
@@ -122,7 +217,7 @@ macro_rules! create_keystroke_table {
             [$(
                 KeyStrokeMacroInputRow {
                     keystroke: $keystroke,
-                    keypressess: pad_keypresses(&[$($scancode:expr),*]),
+                    keypresses: pad_keypresses(&[$($scancode),*]),
                 }
             ),*]
         )
