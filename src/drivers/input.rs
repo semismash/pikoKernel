@@ -6,7 +6,7 @@ use crate::arch::i686::kbd::KeyPress as KP;
 use crate::drivers::input;
 use crate::drivers::input::InputAction::{AddChar, Cancel, DelCharBack, Submit};
 
-const BUFFER_LENGTH: usize = 256;
+pub const BUFFER_LENGTH: usize = 256;
 
 const KEYSTROKE_MAX_COUNT: usize = 256;
 const KEYSTROKE_CAPACITY: usize = 8;   //max 8 keystrokes per keystroke, implemented by software, practically will never reach this high
@@ -45,14 +45,14 @@ pub enum InputError {
 
 impl InputBuffer {
 
-    fn new() -> Self {
+    pub fn new() -> Self {
         Self {
             buffer: [Char::Null; BUFFER_LENGTH],
             idx: 0,
         }
     }
 
-    fn execute_action(&mut self, action: InputAction) -> Result<(), InputError> {
+    pub fn execute_action(&mut self, action: InputAction) -> Result<(), InputError> {
         match action {
             InputAction::None => { },
             InputAction::AddChar(ch) => { self.write_char(ch)?; },
@@ -78,7 +78,7 @@ impl InputBuffer {
     }
     
     pub fn write_char(&mut self, ch: Char) -> Result<(), InputError> {  
-        //currently, directly changes the character that row and col point to
+        //currently, directly changes the character that idx points to
         //needs to be changed between insert mode and add mode, the latter will move the remaining text in the buffer up
         if self.idx < BUFFER_LENGTH {
             unsafe {

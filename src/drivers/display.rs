@@ -2,6 +2,7 @@ use core::{ascii::Char};
 use core::ptr::{write, write_volatile};
 use core::fmt;
 use crate::sys;
+use crate::drivers::input;
 use crate::drivers::input::InputBuffer;
 //use core::cell::SyncUnsafeCell;
 
@@ -350,15 +351,17 @@ pub(crate) use write_and_flush;
 
 impl DisplayWriter {
 
-    pub fn copy_from_input_buf(&mut self, input_buf: &InputBuffer) -> Result<(), VGAError> {
+    pub fn write_from_input_buf(&mut self, input_buf: &InputBuffer) -> Result<(), VGAError> {
 
-        let input_offset = input_buf.get_offset();
+        let buf_offset = self.offset;
+        let input_offset = input_buf.idx;
         if input_offset < BUFFER_CAPACITY - self.offset - 1 {
             let frame_idx = self.input_frame;
             unsafe {
                 let input_frame_ptr: *mut ScreenCharacter = &mut self.buffer[frame_idx] as *mut ScreenCharacter;
                 let input_buf_ptr: *const Char = input_buf.buffer.as_ptr() as *const Char;
-                for i in 0..input_offset { 
+                let mut i = 0;
+                while i + buf_offset < BUFFER_CAPACITY && i < input::BUFFER_LENGTH {
                     core::ptr::write(
                         input_frame_ptr.add(i),
                         ScreenCharacter { 
@@ -366,9 +369,10 @@ impl DisplayWriter {
                             attribute: 0x00,
                         }
                     );
+                    i += 1;
                 }
             }
-            self.offset += input_offset;
+            self.offset = self.input_frame + input_offset;
             self.update_row_and_col();
             Ok(())
         } else {

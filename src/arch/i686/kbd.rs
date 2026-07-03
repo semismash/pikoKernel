@@ -9,7 +9,7 @@ const EXTENDED_BYTE: u8 = 0xE0;
 pub const KEYPRESS_STACK_LENGTH: u8 = 128;
 
 static mut IS_EXTENDED: bool = false;
-static mut KEYPRESS_STACK: [KeyPress; KEYPRESS_STACK_LENGTH] 
+pub static mut KEYPRESS_STACK: [KeyPress; KEYPRESS_STACK_LENGTH] 
     = [KeyPress::default(); KEYPRESS_STACK_LENGTH];
 static mut KEYPRESS_STACK_POINTER: u8 = 0;  // POSITION OF THE NEXT FREE SLOT
 
@@ -116,29 +116,10 @@ impl Keyboard {
                     }
                 }
                 //move_into_input_driver_func(keypress);
-                call_input_driver_func(self.capslk_on, self.numlk_on, self.scrllk_on);
+                //call_input_driver_func(self.capslk_on, self.numlk_on, self.scrllk_on);
                 IS_EXTENDED = false;
             }
         }
     }
 
 }
-
-/*impl Keyboard {
-
-    pub fn update_keypress(scancode: u8) {
-        let cur_keypress = MOST_RECENT_KEYPRESS.load(Ordering::Relaxed);
-        if (scancode > RELEASE_THRESHOLD) {
-            MOST_RECENT_KEYPRESS.store(scancode, Ordering::Relaxed);
-        } else {
-            if (scancode - cur_keypress == RELEASE_THRESHOLD) {
-                MOST_RECENT_KEYPRESS.store(0x00, Ordering::Relaxed);
-            }
-            // call input function scancode as key
-            unsafe {
-                crate::sys::console::INPUT_BUFFER.update_action(scancode - cur_keypress);
-            }
-        }
-    }
-
-}*/

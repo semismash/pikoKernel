@@ -4,24 +4,26 @@ use crate::arch::i686::vga;
 use crate::sys::EchoMode::Immediate;
 use core::fmt::Write;
 use core::ascii::Char;
-use crate::drivers::input::{Input};
+use crate::drivers::input;
+use crate::drivers::input::{InputBuffer, InputAction};
 
 pub(crate) static mut OS_BUFFER: DisplayWriter = DisplayWriter::new(Some(vga::update_cursor));
 pub(crate) static FRAME: display::FramePointer = display::FramePointer(
     vga::VGA_BUFFER_ADR as *mut [[u16; BUFFER_WIDTH]; BUFFER_HEIGHT]
 );
 
-pub(crate) static mut INPUT_BUFFER: Input = Input::new();
+pub(crate) static mut INPUT_BUFFER: InputBuffer = InputBuffer::new();
 
 pub enum EchoMode {
     None,
     Immediate,
     OnEnter,
     Silent,
-    Masked(Char)
+    //Masked(Char)
 }
 
 pub struct Console {
+    cur_action: InputAction,
     echo_mode: EchoMode,
 }
 
@@ -29,6 +31,7 @@ impl Console {
 
     pub fn initialize() -> Self {
         Self {
+            cur_action: InputAction::None,
             echo_mode: EchoMode::Immediate,
         }
     }
@@ -41,17 +44,30 @@ impl Console {
         match self.echo_mode {
             EchoMode::None => {},
             EchoMode::Immediate => {
-                
+                unsafe { 
+                    self.cur_action = input::get_action(&crate::arch::i686::kbd::KEYPRESS_STACK);   // get action from current keystroke
+                    INPUT_BUFFER.execute_action(self.cur_action);   // execute action with current keystroke
+                    OS_BUFFER.write_from_input_buf(&INPUT_BUFFER);
+                    OS_BUFFER.flush_sync(FRAME);
+                }
             },
             EchoMode::OnEnter => {
-                
+                unsafe {
+                    self.cur_action = input::get_action(&crate::arch::i686::kbd::KEYPRESS_STACK);
+                    INPUT_BUFFER.execute_action(self.cur_action);
+                    OS_BUFFER.write_from_input_buf(&INPUT_BUFFER);
+                    if self.cur_action == InputAction::Submit { OS_BUFFER.flush_sync(FRAME); }
+                }
             },
             EchoMode::Silent => {
-
+                unsafe {
+                    self.cur_action = input::get_action(&crate::arch::i686::kbd::KEYPRESS_STACK);
+                    INPUT_BUFFER.execute_action(self.cur_action);
+                }
             },
-            Echonode::Masked(mask_char) => {
+            /*Echonode::Masked(mask_char) => {
 
-            },
+            },*/
         }
     }
 
