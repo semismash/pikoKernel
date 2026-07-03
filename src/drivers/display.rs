@@ -352,7 +352,6 @@ pub(crate) use write_and_flush;
 impl DisplayWriter {
 
     pub fn write_from_input_buf(&mut self, input_buf: &InputBuffer) -> Result<(), VGAError> {
-
         let buf_offset = self.offset;
         let input_offset = input_buf.idx;
         if input_offset < BUFFER_CAPACITY - self.offset - 1 {
@@ -361,9 +360,9 @@ impl DisplayWriter {
                 let input_frame_ptr: *mut ScreenCharacter = &mut self.buffer[frame_idx] as *mut ScreenCharacter;
                 let input_buf_ptr: *const Char = input_buf.buffer.as_ptr() as *const Char;
                 let mut i = 0;
-                while i < buf_offset{
+                while i < input_offset {
                     core::ptr::write(
-                        input_frame_ptr.add(i),
+                        input_frame_ptr.add(buf_offset + i),
                         ScreenCharacter { 
                             ascii_char: (*input_buf_ptr.add(i)).to_u8(), // conv to u8
                             attribute: 0x0F,
@@ -372,13 +371,12 @@ impl DisplayWriter {
                     i += 1;
                 }
             }
-            self.offset = self.input_frame + input_offset;
+            self.offset = self.input_frame + buf_offset + input_offset;
             self.update_row_and_col();
             Ok(())
         } else {
             Err(VGAError::CopyFromInputError)
         }
-
     }
 
 }

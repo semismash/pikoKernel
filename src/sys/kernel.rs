@@ -34,6 +34,8 @@ pub fn main() -> ! {
         //enable text and cursor
         i686::vga::enable_cursor(14, 15);
 
+        sys::console::println!("OS BOOT!");
+
         /*sys::console::write!("Value of CS is {:X}\n", cs);
         sys::console::write!("Value of DS is {:X}\n", ds);
 
