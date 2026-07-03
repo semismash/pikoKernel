@@ -220,17 +220,17 @@ impl KeyStroke {
 }
 
 pub fn get_action(keypress_stack: &[KeyPress; KEYPRESS_STACK_LENGTH as usize]) -> InputAction {
-    let mut bitmask: [u64; 4] = [0xFFFFFFFFFFFFFFFF; 4];  // 256 bits, one per keystroke entry; can be changed later
-    let mut keypress_stack_ptr: u8 = 0;
-    let mut candidate: usize = 0;
-    for i in 0..KEYSTROKE_CAPACITY {
+    let mut bitmask: [u64; 4] = [0xFFFFFFFFFFFFFFFF; 4];  // 256 bits, one per keystroke entry, can be changed later
+    let mut keypress_stack_ptr: u8 = 0; //the last keystroke that was a valid candidate
+    let mut candidate: usize = 0;   
+    for i in 0..KEYSTROKE_CAPACITY {    // scan each keypress row first, starting at key 1
         candidate = 0;
-        let mut candidate_count: usize = 0;
-        for j in 0..KEYSTROKE_MAX_COUNT {
+        let mut candidate_count: usize = 0;      //number of potential candidates for keypress 
+        for j in 0..KEYSTROKE_MAX_COUNT {   // go through each individual keypress and check if it matches
             let cur_keypress = (KEYSTROKE_TABLE[j].1)[i];
             let cur_ptr = keypress_stack_ptr;
             let word = j / 64;
-            let bit  = j % 64;
+            let bit = j % 64;
             if (bitmask[word] >> bit & 0x1) == 1 {
                 if cur_keypress.equals_key(&keypress_stack[cur_ptr as usize]) {
                     candidate = j;
@@ -241,13 +241,13 @@ pub fn get_action(keypress_stack: &[KeyPress; KEYPRESS_STACK_LENGTH as usize]) -
             }
         }
         match candidate_count {
-            0 => { return InputAction::None; },
-            1 => { return (KEYSTROKE_TABLE[candidate].0).match_key_stroke_to_action(); },
-            _ => {},
+            0 => { return InputAction::None; },     // reached end/ambiguous, exit early with default action None (TO BE CHANGEGD LATER TO CHECKING THE MOST RECENT KEYPRESS)
+            1 => { return (KEYSTROKE_TABLE[candidate].0).match_key_stroke_to_action(); },   // if 1 matches, it is the correct one
+            _ => {},    // reached end/ambiguous, exit early with default action None
         }
         keypress_stack_ptr += 1;
     }
-    InputAction::None
+    InputAction::None   // reached end/ambiguous, exit early with default action None
 }
 
 const fn create_keystroke_table(inputs: [KeyStrokeMacroInputRow; KEYSTROKE_MAX_COUNT]) -> [KeyStrokeEntry; KEYSTROKE_MAX_COUNT] {
