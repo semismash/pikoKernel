@@ -13,13 +13,9 @@ use crate::sys::time;
 
 use core::fmt::Write;
 
+pub static mut OS_CONSOLE: sys::console::Console = sys::console::Console::initialize();
+
 pub fn main() -> ! {
-    
-    let message_1 = "Hey, what's up :D!";
-    let message_2 = "Hey, what's up :D! (but it's red)";
-    let message_3 = "I'm a ";
-    let message_4 = "Rustacean";
-    let message_5 = ", what's up?";
 
     unsafe {
         //set up GDT
@@ -50,8 +46,8 @@ pub fn main() -> ! {
         //test delay
         crate::sys::time::SysTime::delay(2000);
 
-        sys::console::println!("Hey, what's up :D!");
-        sys::console::println!("Red colored texted", FGColor::Red);
+        sys::console::println!("OS BOOTED!");
+        /*sys::console::println!("Red colored texted", FGColor::Red);
         sys::console::print!("I'm a ", FGColor::Magenta);
         sys::console::print!("Rustacean", FGColor::Yellow);
         sys::console::println!(", what's up?", FGColor::Magenta);
@@ -59,7 +55,7 @@ pub fn main() -> ! {
         for i in 0..9 {
             sys::console::print!("Tung ", FGColor::Yellow);
         }
-        sys::console::println!("Sahur", FGColor::Green);
+        sys::console::println!("Sahur", FGColor::Green);*/
 
         //time::delay(2);
         //panic!("asfdfasdfasgdewgw");

@@ -8,15 +8,22 @@ const EXTENDED_BYTE: u8 = 0xE0;
 
 pub const KEYPRESS_STACK_LENGTH: u8 = 128;
 
+pub static mut KEYBOARD: Keyboard = Keyboard { capslk_on: false, numlk_on: false, scrllk_on: false };
+
 static mut IS_EXTENDED: bool = false;
-pub static mut KEYPRESS_STACK: [KeyPress; KEYPRESS_STACK_LENGTH] 
-    = [KeyPress::default(); KEYPRESS_STACK_LENGTH];
+pub static mut KEYPRESS_STACK: [KeyPress; KEYPRESS_STACK_LENGTH as usize] = {
+    const INIT: KeyPress = KeyPress { keypress_data: AtomicU16::new(0) };
+    [INIT; KEYPRESS_STACK_LENGTH as usize]
+};
+/*pub static mut KEYPRESS_STACK: [KeyPress; KEYPRESS_STACK_LENGTH as usize] 
+    = core::array::from_fn(|_| KeyPress { keypress_data: AtomicU16::new(0) } );*/
+    // = [KeyPress { keypress_data: AtomicU16::new(0) }; KEYPRESS_STACK_LENGTH as usize];
 static mut KEYPRESS_STACK_POINTER: u8 = 0;  // POSITION OF THE NEXT FREE SLOT
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum Key {
-    #[default] None = 0x00u8, 
+    None = 0x00u8, 
     Esc = 0x01u8,
     Num1 = 0x02u8, Num2 = 0x03u8, Num3 = 0x04u8, Num4 = 0x05u8, Num5 = 0x06u8,
     Num6 = 0x07u8, Num7 = 0x08u8, Num8 = 0x09u8, Num9 = 0x0Au8, Num0 = 0x0Bu8,
@@ -46,16 +53,22 @@ pub enum Key {
     F11 = 0x57u8, F12 = 0x58u8,
 }
 
+impl Key {
+    const fn default() -> Self {
+        Self::None
+    }
+}
+
 pub struct Keyboard {
     capslk_on: bool,
     numlk_on: bool,
     scrllk_on: bool,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug)]
 #[repr(C)]
 pub struct KeyPress {
-    keypress_data: AtomicU16,
+    pub keypress_data: AtomicU16,
 }
 
 impl KeyPress {
@@ -69,11 +82,7 @@ impl KeyPress {
     }
 
     pub const fn default() -> Self {
-        Self { keypress_data: AtomicU16(Key::default() as u16) }
-    }
-
-    pub fn equals_key(&self, other: KeyPress) -> bool {
-        self.keypress_data.load(Ordering::Relaxed) == other.keypress_data.load(Ordering::Relaxed)
+        Self { keypress_data: AtomicU16::new(Key::default() as u16) }
     }
 
     fn get_keycode(&self) -> u8 { (self.keypress_data.load(Ordering::Relaxed) & 0xFF) as u8 }
@@ -99,7 +108,7 @@ impl Keyboard {
                 let keypress = KeyPress { keypress_data: AtomicU16::new(scancode as u16 | (IS_EXTENDED as u16) << 8) };
                 if !is_release {
                     if KEYPRESS_STACK_POINTER < KEYPRESS_STACK_LENGTH - 1 {    //cap to stack length - 1 for one byte of safety padding at the end
-                        KEYPRESS_STACK[KEYPRESS_STACK_POINTER] = keypress;
+                        KEYPRESS_STACK[KEYPRESS_STACK_POINTER as usize] = keypress;
                         KEYPRESS_STACK_POINTER += 1;
                     } else {
                         return (); //doesn't register if stack is full
@@ -108,7 +117,8 @@ impl Keyboard {
                     for i in (0..KEYPRESS_STACK_POINTER).rev() {
                         let kp = &mut KEYPRESS_STACK[i as usize];
                         if kp.get_keycode() == scancode {
-                            ptr::copy(kp_ptr + 1, kp_ptr, (KEYPRESS_STACK_POINTER - i) as usize); 
+                            let kp_ptr = kp as *mut KeyPress;
+                            ptr::copy(kp_ptr.add(1), kp_ptr, (KEYPRESS_STACK_POINTER - i) as usize); 
                             // above, kp_ptr + 1 is safe because of the extra padding byte we added earlier
                             KEYPRESS_STACK_POINTER -= 1;
                             break;
@@ -117,6 +127,8 @@ impl Keyboard {
                 }
                 //move_into_input_driver_func(keypress);
                 //call_input_driver_func(self.capslk_on, self.numlk_on, self.scrllk_on);
+                let console_ptr = &raw mut crate::sys::kernel::OS_CONSOLE;
+                (*console_ptr).update_input();
                 IS_EXTENDED = false;
             }
         }

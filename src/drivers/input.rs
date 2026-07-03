@@ -1,10 +1,10 @@
 use core::ascii::Char;
 
-use crate::arch::i686::kbd::Key::P;
-use crate::arch::i686::kbd::{self, Keyboard, Key};
-use crate::arch::i686::kbd::KeyPress as KP;
+use crate::arch::i686::kbd::{self, Keyboard, Key, KEYPRESS_STACK_LENGTH};
+use crate::arch::i686::kbd::KeyPress;
 use crate::drivers::input;
-use crate::drivers::input::InputAction::{AddChar, Cancel, DelCharBack, Submit};
+use crate::drivers::input::InputAction::{AddChar, Cancel, DelChar, BackChar, Submit};
+use core::sync::atomic::Ordering;
 
 pub const BUFFER_LENGTH: usize = 256;
 
@@ -12,15 +12,7 @@ const KEYSTROKE_MAX_COUNT: usize = 256;
 const KEYSTROKE_CAPACITY: usize = 8;   //max 8 keystrokes per keystroke, implemented by software, practically will never reach this high
 
 //compile time check to make sure keystroke capacity does not exceed stack size
-const _: u8 = [0][(KEYSTROKE_MAX_COUNT >= kbd::KEYPRESS_STACK_LENGTH as usize)];
-
-type KeyStrokeEntry = (KeyStroke, [KP; KEYSTROKE_CAPACITY]);
-static KEYSTROKE_TABLE: [KeyStrokeEntry; KEYSTROKE_MAX_COUNT] = create_keystroke_table!(
-    KS::None => [],
-    KS::PutCSmallA => [KP::new(Key::A, false)],
-    KS::PutCSmallB => [KP::new(Key::B, false)],
-    KS::PutCSmallC => [KP::new(Key::B, false)],
-);
+const _: u8 = [0][((KEYSTROKE_MAX_COUNT <= kbd::KEYPRESS_STACK_LENGTH as usize) as usize)];
 
 type CharBuffer = [Char; BUFFER_LENGTH];
 #[repr(C)]
@@ -45,7 +37,7 @@ pub enum InputError {
 
 impl InputBuffer {
 
-    pub fn new() -> Self {
+    pub const fn new() -> Self {
         Self {
             buffer: [Char::Null; BUFFER_LENGTH],
             idx: 0,
@@ -103,7 +95,7 @@ impl InputBuffer {
     }
 
     pub fn del_char(&mut self) {
-        if (self.get_offset() < BUFFER_LENGTH - 1) { 
+        if (self.idx < BUFFER_LENGTH - 1) { 
             unsafe {
                 let idx_ptr = &mut self.buffer[self.idx] as *mut Char;
                 core::ptr::copy(idx_ptr.add(1), idx_ptr, BUFFER_LENGTH - self.idx - 1);
@@ -117,32 +109,113 @@ impl InputBuffer {
 
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct KeyPressConfig {
+    keypress_data: u16,
+}
+type KP = KeyPressConfig;
+impl KeyPressConfig {
+
+    const fn new(
+        keycode: Key,
+        extended: bool,
+    ) -> Self {
+        Self {
+            keypress_data: (keycode as u16) | ((extended as u16) << 8),
+        }
+    }
+
+    const fn default() -> Self {
+        Self { keypress_data: 0x0000 }
+    }
+
+    pub fn equals_key(&self, other: &KeyPress) -> bool {
+        self.keypress_data == other.keypress_data.load(Ordering::Relaxed)
+    }
+
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum KeyStroke {
     //list of keystrokes
-    #[default] None = 0x00u8,
+    None,
     PutCSmallA,
     PutCSmallB,
     PutCSmallC,
+    PutCSmallD,
+    PutCSmallE,
+    PutCSmallF,
+    PutCSmallG,
+    PutCSmallH,
+    PutCSmallI,
+    PutCSmallJ,
+    PutCSmallK,
+    PutCSmallL,
+    PutCSmallM,
+    PutCSmallN,
+    PutCSmallO,
+    PutCSmallP,
+    PutCSmallQ,
+    PutCSmallR,
+    PutCSmallS,
+    PutCSmallT,
+    PutCSmallU,
+    PutCSmallV,
+    PutCSmallW,
+    PutCSmallX,
+    PutCSmallY,
+    PutCSmallZ,
+    Backspace,
+    Delete,
 }
 
 type KS = KeyStroke;
 
 impl KeyStroke {
-    fn match_key_stroke_to_action(&self) -> InputAction {
-        match self {
-            KS::PutCSmallA => AddChar(Char::SmallA),
-            KS::PutCSmallB => AddChar(Char::SmallB),
-            KS::PutCSmallC => AddChar(Char::SmallC),
 
+    const fn default() -> Self {
+        Self::None
+    }
+
+    const fn match_key_stroke_to_action(&self) -> InputAction {
+        match self {
+            KS::PutCSmallA => InputAction::AddChar(Char::SmallA),
+            KS::PutCSmallB => InputAction::AddChar(Char::SmallB),
+            KS::PutCSmallC => InputAction::AddChar(Char::SmallC),
+            KS::PutCSmallD => InputAction::AddChar(Char::SmallD),
+            KS::PutCSmallE => InputAction::AddChar(Char::SmallE),
+            KS::PutCSmallF => InputAction::AddChar(Char::SmallF),
+            KS::PutCSmallG => InputAction::AddChar(Char::SmallG),
+            KS::PutCSmallH => InputAction::AddChar(Char::SmallH),
+            KS::PutCSmallI => InputAction::AddChar(Char::SmallI),
+            KS::PutCSmallJ => InputAction::AddChar(Char::SmallJ),
+            KS::PutCSmallK => InputAction::AddChar(Char::SmallK),
+            KS::PutCSmallL => InputAction::AddChar(Char::SmallL),
+            KS::PutCSmallM => InputAction::AddChar(Char::SmallM),
+            KS::PutCSmallN => InputAction::AddChar(Char::SmallN),
+            KS::PutCSmallO => InputAction::AddChar(Char::SmallO),
+            KS::PutCSmallP => InputAction::AddChar(Char::SmallP),
+            KS::PutCSmallQ => InputAction::AddChar(Char::SmallQ),
+            KS::PutCSmallR => InputAction::AddChar(Char::SmallR),
+            KS::PutCSmallS => InputAction::AddChar(Char::SmallS),
+            KS::PutCSmallT => InputAction::AddChar(Char::SmallT),
+            KS::PutCSmallU => InputAction::AddChar(Char::SmallU),
+            KS::PutCSmallV => InputAction::AddChar(Char::SmallV),
+            KS::PutCSmallW => InputAction::AddChar(Char::SmallW),
+            KS::PutCSmallX => InputAction::AddChar(Char::SmallX),
+            KS::PutCSmallY => InputAction::AddChar(Char::SmallY),
+            KS::PutCSmallZ => InputAction::AddChar(Char::SmallZ),
+            KS::Backspace => InputAction::BackChar,
+            KS::Delete => InputAction::DelChar,
             //catch all
             _ => InputAction::None,
         }
     }
 }
 
-pub fn get_action(keypress_stack: &[KP; KEYPRESS_STACK_LENGTH]) -> InputAction {
+pub fn get_action(keypress_stack: &[KeyPress; KEYPRESS_STACK_LENGTH as usize]) -> InputAction {
     let mut bitmask: u64 = 0xFFFFFFFFFFFFFFFF;   //for 256 keystroke cap, can be changed later
     let mut keypress_stack_ptr: u8 = 0;
     let mut candidate: usize = 0;    //the last keystroke that was a valid candidate
@@ -153,7 +226,7 @@ pub fn get_action(keypress_stack: &[KP; KEYPRESS_STACK_LENGTH]) -> InputAction {
             let cur_keypress = (KEYSTROKE_TABLE[j].1)[i];
             let cur_ptr = keypress_stack_ptr;
             if (bitmask >> i & 0x1) == 1 {
-                if (cur_keypress.equals_key(keypress_stack[cur_ptr])) {
+                if (cur_keypress.equals_key(&keypress_stack[cur_ptr as usize])) {
                     candidate = j;
                     candidate_count += 1;
                 } else {
@@ -191,17 +264,60 @@ const fn pad_keypresses(src: &[KP]) -> [KP; KEYSTROKE_CAPACITY] {   //helper fun
     dst
 }
 
+#[derive(Debug, Clone, Copy)]
 struct KeyStrokeMacroInputRow { keystroke: KeyStroke, keypresses: [KP; KEYSTROKE_CAPACITY] }
 
 macro_rules! create_keystroke_table {
     ($($keystroke:expr => [$($scancode:expr),*]),* $(,)?) => {
-        create_keystroke_table(
-            [$(
-                KeyStrokeMacroInputRow {
+        {
+            let mut inputs = [KeyStrokeMacroInputRow {
+                keystroke: KeyStroke::default(),
+                keypresses: [KP::default(); KEYSTROKE_CAPACITY],
+            }; KEYSTROKE_MAX_COUNT];
+            
+            let mut idx = 0;
+            $(
+                inputs[idx] = KeyStrokeMacroInputRow {
                     keystroke: $keystroke,
                     keypresses: pad_keypresses(&[$($scancode),*]),
-                }
-            ),*]
-        )
+                };
+                idx += 1;
+            )*
+            create_keystroke_table(inputs)
+        }
     };
 }
+
+
+type KeyStrokeEntry = (KeyStroke, [KP; KEYSTROKE_CAPACITY]);
+static KEYSTROKE_TABLE: [KeyStrokeEntry; KEYSTROKE_MAX_COUNT] = create_keystroke_table!(
+    KS::None => [],
+    KS::PutCSmallA => [KP::new(Key::A, false)],
+    KS::PutCSmallB => [KP::new(Key::B, false)],
+    KS::PutCSmallC => [KP::new(Key::C, false)],
+    KS::PutCSmallD => [KP::new(Key::D, false)],
+    KS::PutCSmallE => [KP::new(Key::E, false)],
+    KS::PutCSmallF => [KP::new(Key::F, false)],
+    KS::PutCSmallG => [KP::new(Key::G, false)],
+    KS::PutCSmallH => [KP::new(Key::H, false)],
+    KS::PutCSmallI => [KP::new(Key::I, false)],
+    KS::PutCSmallJ => [KP::new(Key::J, false)],
+    KS::PutCSmallK => [KP::new(Key::K, false)],
+    KS::PutCSmallL => [KP::new(Key::L, false)],
+    KS::PutCSmallM => [KP::new(Key::M, false)],
+    KS::PutCSmallN => [KP::new(Key::N, false)],
+    KS::PutCSmallO => [KP::new(Key::O, false)],
+    KS::PutCSmallP => [KP::new(Key::P, false)],
+    KS::PutCSmallQ => [KP::new(Key::Q, false)],
+    KS::PutCSmallR => [KP::new(Key::R, false)],
+    KS::PutCSmallS => [KP::new(Key::S, false)],
+    KS::PutCSmallT => [KP::new(Key::T, false)],
+    KS::PutCSmallU => [KP::new(Key::U, false)],
+    KS::PutCSmallV => [KP::new(Key::V, false)],
+    KS::PutCSmallW => [KP::new(Key::W, false)],
+    KS::PutCSmallX => [KP::new(Key::X, false)],
+    KS::PutCSmallY => [KP::new(Key::Y, false)],
+    KS::PutCSmallZ => [KP::new(Key::Z, false)],
+    KS::Delete     => [KP::new(Key::Tab, false)],
+    KS::Backspace  => [KP::new(Key::Bksp, false)],
+);
