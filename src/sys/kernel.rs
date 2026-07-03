@@ -51,7 +51,7 @@ pub fn main() -> ! {
         crate::sys::time::SysTime::delay(2000);
 
         sys::console::println!("Hey, what's up :D!");
-        sys::console::println!("Hey, what's up :D! (but it's red)", FGColor::Red);
+        sys::console::println!("Red colored texted", FGColor::Red);
         sys::console::print!("I'm a ", FGColor::Magenta);
         sys::console::print!("Rustacean", FGColor::Yellow);
         sys::console::println!(", what's up?", FGColor::Magenta);

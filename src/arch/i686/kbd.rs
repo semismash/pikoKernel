@@ -1,10 +1,17 @@
-use core::sync::atomic::{AtomicU8, Ordering};
+use core::sync::atomic::{AtomicU16, Ordering};
+use core::ptr;
 
 use crate::arch::i686::kbd::Key::S;
 
-const RELEASE_THRESHOLD: u8 = 0x80;
+const RELEASE_BYTE: u8 = 0x80;
+const EXTENDED_BYTE: u8 = 0xE0;
 
-static MOST_RECENT_KEYPRESS: AtomicU8 = AtomicU8::new(0x00u8);
+pub const KEYPRESS_STACK_LENGTH: u8 = 128;
+
+static mut IS_EXTENDED: bool = false;
+static mut KEYPRESS_STACK: [KeyPress; KEYPRESS_STACK_LENGTH] 
+    = [KeyPress::default(); KEYPRESS_STACK_LENGTH];
+static mut KEYPRESS_STACK_POINTER: u8 = 0;  // POSITION OF THE NEXT FREE SLOT
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -41,7 +48,70 @@ pub enum Key {
 
 pub struct Keyboard;
 
+#[derive(Debug, Clone, Copy)]
+#[repr(C)]
+pub struct KeyPress {
+    keypress_data: AtomicU16,
+}
+
+impl KeyPress {
+    pub const fn new(
+        keycode: u16,
+        extended: bool,
+    ) -> Self {
+        Self {
+            keypress_data: AtomicU16::new(keycode | (extended as u16) << 8)
+        }
+    }
+
+    pub const fn default() -> Self {
+        Self { keypress_data: AtomicU16(Key::default() as u16) }
+    }
+
+    pub fn equals_key(&self, other: KeyPress) -> bool {
+        self.keypress_data.load(Ordering::Relaxed) == other.keypress_data.load(Ordering::Relaxed)
+    }
+
+    fn get_keycode(&self) -> u8 { (self.keypress_data.load(Ordering::Relaxed) & 0xFF) as u8 }
+    fn get_metadata(&self) -> u8 { (self.keypress_data.load(Ordering::Relaxed) >> 8 & 0xFF) as u8 }
+}
+
 impl Keyboard {
+
+    pub fn update_keypress(scancode: u8) {
+        unsafe {
+            if scancode == EXTENDED_BYTE {
+                IS_EXTENDED = true;
+            } else {
+                let is_release = (scancode & RELEASE_BYTE) >> 6 == 1;
+                let keypress = KeyPress::new(scancode as u16, IS_EXTENDED);
+                if !is_release {
+                    if KEYPRESS_STACK_POINTER < KEYPRESS_STACK_LENGTH - 1 {    //cap to stack length - 1 for one byte of safety padding at the end
+                        KEYPRESS_STACK[KEYPRESS_STACK_POINTER] = keypress;
+                        KEYPRESS_STACK_POINTER += 1;
+                    } else {
+                        return (); //doesn't register if stack is full
+                    }
+                } else {
+                    for i in (0..KEYPRESS_STACK_POINTER).rev() {
+                        let kp = &mut KEYPRESS_STACK[i as usize];
+                        if kp.get_keycode() == scancode {
+                            ptr::copy(kp_ptr + 1, kp_ptr, (KEYPRESS_STACK_POINTER - i) as usize); 
+                            // above, kp_ptr + 1 is safe because of the extra padding byte we added earlier
+                            KEYPRESS_STACK_POINTER -= 1;
+                            break;
+                        }
+                    }
+                }
+                move_into_input_driver_func(keypress);
+                IS_EXTENDED = false;
+            }
+        }
+    }
+
+}
+
+/*impl Keyboard {
 
     pub fn update_keypress(scancode: u8) {
         let cur_keypress = MOST_RECENT_KEYPRESS.load(Ordering::Relaxed);
@@ -52,7 +122,10 @@ impl Keyboard {
                 MOST_RECENT_KEYPRESS.store(0x00, Ordering::Relaxed);
             }
             // call input function scancode as key
+            unsafe {
+                crate::sys::console::INPUT_BUFFER.update_action(scancode - cur_keypress);
+            }
         }
     }
 
-}
+}*/
