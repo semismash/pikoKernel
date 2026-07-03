@@ -361,12 +361,12 @@ impl DisplayWriter {
                 let input_frame_ptr: *mut ScreenCharacter = &mut self.buffer[frame_idx] as *mut ScreenCharacter;
                 let input_buf_ptr: *const Char = input_buf.buffer.as_ptr() as *const Char;
                 let mut i = 0;
-                while i + buf_offset < BUFFER_CAPACITY && i < input::BUFFER_LENGTH {
+                while i < buf_offset{
                     core::ptr::write(
                         input_frame_ptr.add(i),
                         ScreenCharacter { 
                             ascii_char: (*input_buf_ptr.add(i)).to_u8(), // conv to u8
-                            attribute: 0x00,
+                            attribute: 0x0F,
                         }
                     );
                     i += 1;

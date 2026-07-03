@@ -104,7 +104,7 @@ impl Keyboard {
             if scancode == EXTENDED_BYTE {  // IMPLEMENT caps, num and scroll lock
                 IS_EXTENDED = true;
             } else {
-                let is_release = (scancode & RELEASE_BYTE) >> 6 == 1;
+                let is_release = (scancode & RELEASE_BYTE) != 0;
                 let keypress = KeyPress { keypress_data: AtomicU16::new(scancode as u16 | (IS_EXTENDED as u16) << 8) };
                 if !is_release {
                     if KEYPRESS_STACK_POINTER < KEYPRESS_STACK_LENGTH - 1 {    //cap to stack length - 1 for one byte of safety padding at the end
@@ -116,7 +116,7 @@ impl Keyboard {
                 } else {
                     for i in (0..KEYPRESS_STACK_POINTER).rev() {
                         let kp = &mut KEYPRESS_STACK[i as usize];
-                        if kp.get_keycode() == scancode {
+                        if kp.get_keycode() == (scancode & !RELEASE_BYTE) {
                             let kp_ptr = kp as *mut KeyPress;
                             ptr::copy(kp_ptr.add(1), kp_ptr, (KEYPRESS_STACK_POINTER - i) as usize); 
                             // above, kp_ptr + 1 is safe because of the extra padding byte we added earlier
