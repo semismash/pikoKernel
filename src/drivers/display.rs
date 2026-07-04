@@ -356,39 +356,6 @@ pub(crate) use write_and_flush;
 
 impl DisplayWriter {
 
-    /*pub fn write_from_input_buf(&mut self, input_buf: &InputBuffer)  -> Result<(), VGAError> {
-        let input_offset = input_buf.idx;
-        let frame_idx = self.input_frame;
-        let remaining_capacity = BUFFER_CAPACITY - frame_idx;
-        if input_offset < remaining_capacity {
-            let flush_amt = {
-                if input::BUFFER_LENGTH < remaining_capacity { input::BUFFER_LENGTH }
-                else { remaining_capacity }
-            };
-            unsafe {
-                let base_ptr: *mut ScreenCharacter = self.buffer.as_mut_ptr() as *mut ScreenCharacter;
-                let frame_ptr: *mut ScreenCharacter = base_ptr.add(frame_idx);
-                let input_ptr: *const Char = input_buf.buffer.as_ptr();
-                let mut i = 0;
-                while i < flush_amt {
-                    core::ptr::write(
-                        frame_ptr.add(i),
-                        ScreenCharacter { 
-                            ascii_char: (*input_ptr.add(i)).to_u8(), 
-                            attribute: 0x0F, 
-                        }
-                    );
-                    i += 1
-                }
-            }
-            self.offset = self.input_frame + input_offset;
-            self.update_row_and_col();
-            Ok(())
-        } else {
-            Err(VGAError::CopyFromInputError)
-        }
-    }*/
-
     pub fn write_from_input_buf(&mut self, input_buf: &InputBuffer)  -> Result<(), VGAError> {
         let input_offset = input_buf.idx;
         let frame_idx = self.input_frame;
@@ -396,61 +363,48 @@ impl DisplayWriter {
         if frame_idx >= MAX_SAFE_CAPACITY { return Err(VGAError::CopyFromInputError); }
         let remaining_capacity = MAX_SAFE_CAPACITY - frame_idx;
         if input_offset < remaining_capacity {
+            let mut flush_amt = {
+                if input::BUFFER_LENGTH < remaining_capacity { input::BUFFER_LENGTH }
+                else { remaining_capacity }
+            };
             unsafe {
                 let base_ptr: *mut ScreenCharacter = self.buffer.as_mut_ptr() as *mut ScreenCharacter;
+                let frame_ptr: *mut ScreenCharacter = base_ptr.add(frame_idx);
                 let input_ptr: *const Char = input_buf.buffer.as_ptr();
                 let mut i = 0;  //input
                 let mut j = 0;  //display
                 let mut cur_col = self.input_frame % BUFFER_WIDTH;
-                while i < input_offset {
+                let mut final_cursor_j = j;
+                while i < flush_amt {
+                    if i == input_offset { final_cursor_j = j; }    //update cursor position to j
+
+                    let fit = remaining_capacity - j;
+                    if flush_amt - i > fit { flush_amt = fit + i; }
+
                     let cur_ch = *input_ptr.add(i);
-                    if cur_ch == Char::LineFeed {   //check if input char is newline
-                        let remaining_slots_in_row = 80 - cur_col;
+                    if cur_ch == Char::LineFeed {
+                        let remaining_slots_in_row = BUFFER_WIDTH - cur_col;
                         if j + remaining_slots_in_row >= remaining_capacity {
                             break;  // halt immediately to prevent buffer overflow
-                        }
-                        for k in 0..remaining_slots_in_row {    //overwrite rest of the row with empty chars
-                            core::ptr::write(
-                                base_ptr.add(frame_idx + j + k),
-                                ScreenCharacter {
-                                    ascii_char: 0x00u8,
-                                    attribute: 0x0Fu8,
-                                }
-                            )
                         }
                         j += remaining_slots_in_row;
                         cur_col = 0;
                     } else {
-                        if j >= remaining_capacity { break; }   //break if no space left
                         core::ptr::write(
                             base_ptr.add(frame_idx + j),
                             ScreenCharacter { 
-                                ascii_char: cur_ch.to_u8(), 
+                                ascii_char: (*input_ptr.add(i)).to_u8(), 
                                 attribute: 0x0F, 
                             }
                         );
                         j += 1;
                         cur_col += 1;
-                        if cur_col >= 80 {
-                            if self.row_pos >= BUFFER_HEIGHT - 1 {
-                                cur_col = 79;
-                            } else {
-                                cur_col = 0; 
-                            }
-                        }
+                        if cur_col >= 80 { cur_col = 0; }
                     }
-                    i += 1;
+                    i += 1
                 }
-                if j < remaining_capacity {
-                    core::ptr::write(
-                        base_ptr.add(frame_idx + j),
-                        ScreenCharacter { 
-                            ascii_char: 0x00u8, 
-                            attribute: 0x0Fu8, 
-                        }
-                    );
-                }
-                self.offset = frame_idx + j;
+                if i == input_offset { final_cursor_j = j; }    // final check
+                self.offset = frame_idx + final_cursor_j;
             }
             self.update_row_and_col();
             Ok(())

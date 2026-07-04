@@ -142,10 +142,8 @@ impl KeyPressConfig {
 
 }
 
-// NEED TO FIX THIS FUNCTION
 pub fn get_action(keypress_stack: &[KeyPress; KEYPRESS_STACK_LENGTH as usize], active_stack_size: u8) -> InputAction {
     let mut bitmask: [u64; 4] = [0xFFFFFFFFFFFFFFFF; 4];  // 256 bits, one per keystroke entry, can be changed later
-    //let mut keypress_stack_ptr: u8 = 0; //the last keystroke that was a valid candidate
     let mut candidate: usize = 0;   
     let mut final_candidate: Option<usize> = None;
     let mut single_key_fallback_idx: Option<usize> = None; 
