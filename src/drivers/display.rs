@@ -358,13 +358,18 @@ impl DisplayWriter {
     pub fn write_from_input_buf(&mut self, input_buf: &InputBuffer)  -> Result<(), VGAError> {
         let input_offset = input_buf.idx;
         let frame_idx = self.input_frame;
-        if input_offset < BUFFER_CAPACITY - frame_idx {
+        let remaining_capacity = BUFFER_CAPACITY - frame_idx;
+        if input_offset < remaining_capacity {
+            let flush_amt = {
+                if input::BUFFER_LENGTH < remaining_capacity { input::BUFFER_LENGTH }
+                else { remaining_capacity }
+            };
             unsafe {
                 let base_ptr: *mut ScreenCharacter = self.buffer.as_mut_ptr() as *mut ScreenCharacter;
                 let frame_ptr: *mut ScreenCharacter = base_ptr.add(frame_idx);
                 let input_ptr: *const Char = input_buf.buffer.as_ptr();
                 let mut i = 0;
-                while i < input_offset {
+                while i < flush_amt {
                     core::ptr::write(
                         frame_ptr.add(i),
                         ScreenCharacter { 

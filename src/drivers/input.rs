@@ -411,11 +411,13 @@ impl KeyStroke {
             KS::PutCQuestion    => InputAction::AddChar(Char::QuestionMark),
 
             // Controls
-            /*KS::Space     => InputAction::AddChar(Char::Space),
+            /*
+            KS::Space     => InputAction::AddChar(Char::Space),
             KS::Backspace => InputAction::BackChar,
             KS::Delete    => InputAction::DelChar,
             KS::Enter     => InputAction::Submit,
-            KS::Cancel    => InputAction::Cancel,*/
+            KS::Cancel    => InputAction::Cancel,
+            */
             KS::Space     => InputAction::AddChar(Char::Space),
             KS::Backspace => InputAction::BackChar,
             KS::Delete    => InputAction::None,
