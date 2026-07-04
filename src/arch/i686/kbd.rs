@@ -19,7 +19,7 @@ pub static mut KEYPRESS_STACK: [KeyPress; KEYPRESS_STACK_LENGTH as usize] = {
 /*pub static mut KEYPRESS_STACK: [KeyPress; KEYPRESS_STACK_LENGTH as usize] 
     = core::array::from_fn(|_| KeyPress { keypress_data: AtomicU16::new(0) } );*/
     // = [KeyPress { keypress_data: AtomicU16::new(0) }; KEYPRESS_STACK_LENGTH as usize];
-static mut KEYPRESS_STACK_POINTER: u8 = 0;  // POSITION OF THE NEXT FREE SLOT
+pub static mut KEYPRESS_STACK_POINTER: u8 = 0;  // POSITION OF THE NEXT FREE SLOT
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]

@@ -49,13 +49,16 @@ impl Console {
                     let input_ptr = &raw mut INPUT_BUFFER;
                     let os_ptr = &raw mut OS_BUFFER;
 
-                    self.cur_action = input::get_action(&*kbd_ptr);   
+                    let cur_stack_size = *(&raw const crate::arch::i686::kbd::KEYPRESS_STACK_POINTER);
+
+                    self.cur_action = input::get_action(&*kbd_ptr, cur_stack_size);   
                     (*input_ptr).execute_action(self.cur_action);   
                     (*os_ptr).write_from_input_buf(&*input_ptr);
                     (*os_ptr).flush_sync(FRAME);
                 }
             },
-            EchoMode::OnEnter => {  // CHECK
+            // TURNED OFF FOR DEBUGGING PURPOSE
+            /*EchoMode::OnEnter => {  // CHECK
                 unsafe {
                     let kbd_ptr = &raw const crate::arch::i686::kbd::KEYPRESS_STACK;
                     let input_ptr = &raw mut INPUT_BUFFER;
@@ -80,7 +83,8 @@ impl Console {
             },
             /*EchoMode::Masked(mask_char) => {
 
-            },*/
+            },*/ */
+            _ => {}
         }
     }
 

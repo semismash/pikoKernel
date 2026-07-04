@@ -111,7 +111,7 @@ impl InputBuffer {
 
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(C)]
 pub struct KeyPressConfig {
     keypress_data: u16,
@@ -169,6 +169,7 @@ pub enum KeyStroke {
     PutCSmallX,
     PutCSmallY,
     PutCSmallZ,
+    PutCBigZ,
     Space,
     Backspace,
     Delete,
@@ -210,6 +211,7 @@ impl KeyStroke {
             KS::PutCSmallX => InputAction::AddChar(Char::SmallX),
             KS::PutCSmallY => InputAction::AddChar(Char::SmallY),
             KS::PutCSmallZ => InputAction::AddChar(Char::SmallZ),
+            KS::PutCBigZ   => InputAction::AddChar(Char::CapitalZ), 
             KS::Space      => InputAction::AddChar(Char::Space),
             KS::Backspace  => InputAction::BackChar,
             KS::Delete     => InputAction::DelChar,
@@ -219,20 +221,33 @@ impl KeyStroke {
     }
 }
 
-pub fn get_action(keypress_stack: &[KeyPress; KEYPRESS_STACK_LENGTH as usize]) -> InputAction {
+// NEED TO FIX THIS FUNCTION
+pub fn get_action(keypress_stack: &[KeyPress; KEYPRESS_STACK_LENGTH as usize], active_stack_size: u8) -> InputAction {
     let mut bitmask: [u64; 4] = [0xFFFFFFFFFFFFFFFF; 4];  // 256 bits, one per keystroke entry, can be changed later
-    let mut keypress_stack_ptr: u8 = 0; //the last keystroke that was a valid candidate
+    //let mut keypress_stack_ptr: u8 = 0; //the last keystroke that was a valid candidate
     let mut candidate: usize = 0;   
+    let mut final_candidate: Option<usize> = None;
+    let mut single_key_fallback_idx: Option<usize> = None; 
+    // ^^^ optimization, if cell matches and the place after that is padded with no key, then that MUST be the candidate 
+    // (NOTE: requires PROPER initialization of keybinds in the array to work properly)
     for i in 0..KEYSTROKE_CAPACITY {    // scan each keypress row first, starting at key 1
         candidate = 0;
         let mut candidate_count: usize = 0;      //number of potential candidates for keypress 
         for j in 0..KEYSTROKE_MAX_COUNT {   // go through each individual keypress and check if it matches
             let cur_keypress = (KEYSTROKE_TABLE[j].1)[i];
-            let cur_ptr = keypress_stack_ptr;
             let word = j / 64;
             let bit = j % 64;
+
+            // only checks on i = 0 i.e. first column
+            if i == 0 && cur_keypress.equals_key(&keypress_stack[(active_stack_size - 1) as usize]) {
+                if (KEYSTROKE_TABLE[j].1)[1].keypress_data == 0x0000 {
+                    single_key_fallback_idx = Some(j);
+                }
+            }
+
+            // normal check
             if (bitmask[word] >> bit & 0x1) == 1 {
-                if cur_keypress.equals_key(&keypress_stack[cur_ptr as usize]) {
+                if cur_keypress.equals_key(&keypress_stack[i]) {
                     candidate = j;
                     candidate_count += 1;
                 } else {
@@ -241,12 +256,32 @@ pub fn get_action(keypress_stack: &[KeyPress; KEYPRESS_STACK_LENGTH as usize]) -
             }
         }
         match candidate_count {
-            0 => { return InputAction::None; },     // reached end/ambiguous, exit early with default action None (TO BE CHANGEGD LATER TO CHECKING THE MOST RECENT KEYPRESS)
-            1 => { return (KEYSTROKE_TABLE[candidate].0).match_key_stroke_to_action(); },   // if 1 matches, it is the correct one
+            0 => {  // reached end/ambiguous, exit early with default action None
+                final_candidate = None;
+                break;
+            },    
+            1 => {  // if 1 matches, we mark it as the correct one
+                final_candidate = Some(candidate); 
+            },  
             _ => {},    // reached end/ambiguous, exit early with default action None
         }
-        keypress_stack_ptr += 1;
     }
+
+    //revalidate multi-key keybind to prevent bugs
+    if let Some(idx) = final_candidate {
+        let mut i = 0;
+        while i < KEYSTROKE_CAPACITY && (KEYSTROKE_TABLE[idx].1)[i].keypress_data != 0x0000 {   //check that its NOT none
+            i += 1;
+        }
+        if (i == (active_stack_size as usize)) {    // if i equals stack size, the correct keys are beingg pressed
+            return (KEYSTROKE_TABLE[idx].0).match_key_stroke_to_action();
+        }
+    }
+
+    if let Some(idx) = single_key_fallback_idx {    // if nothing matches, default to the most recently pressed key
+        return (KEYSTROKE_TABLE[idx].0).match_key_stroke_to_action();
+    }
+
     InputAction::None   // reached end/ambiguous, exit early with default action None
 }
 
@@ -325,6 +360,7 @@ static KEYSTROKE_TABLE: [KeyStrokeEntry; KEYSTROKE_MAX_COUNT] = create_keystroke
     KS::PutCSmallX => [KP::new(Key::X, false)],
     KS::PutCSmallY => [KP::new(Key::Y, false)],
     KS::PutCSmallZ => [KP::new(Key::Z, false)],
+    KS::PutCBigZ   => [KP::new(Key::Num4, false), KP::new(Key::Num5, false), KP::new(Key::Num6, false)],    // for debugging purpose
     KS::Space      => [KP::new(Key::Space, false)],
     KS::Delete     => [KP::new(Key::Tab, false)],
     KS::Backspace  => [KP::new(Key::Bksp, false)],
