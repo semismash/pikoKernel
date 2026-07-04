@@ -51,10 +51,14 @@ impl Console {
 
                     let cur_stack_size = *(&raw const crate::arch::i686::kbd::KEYPRESS_STACK_POINTER);
 
-                    self.cur_action = input::get_action(&*kbd_ptr, cur_stack_size);   
-                    (*input_ptr).execute_action(self.cur_action);   
-                    (*os_ptr).write_from_input_buf(&*input_ptr);
-                    (*os_ptr).flush_sync(FRAME);
+                    self.cur_action = input::get_action(&*kbd_ptr, cur_stack_size); 
+                    if !(matches!(self.cur_action, InputAction::AddChar(..)) || self.cur_action == InputAction::Submit)
+                        || !((*os_ptr).check_if_full() || (*input_ptr).is_full())
+                    {    
+                        (*input_ptr).execute_action(self.cur_action); 
+                        (*os_ptr).write_from_input_buf(&*input_ptr);
+                        (*os_ptr).flush_sync(FRAME);
+                    }
                 }
             },
             // TURNED OFF FOR DEBUGGING PURPOSE

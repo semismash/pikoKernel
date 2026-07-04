@@ -109,6 +109,10 @@ impl InputBuffer {
         self.write_char(Char::LineFeed)
     }
 
+    pub fn is_full(&self) -> bool {
+        (BUFFER_LENGTH - self.idx) - 1 <= 0
+    }
+
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

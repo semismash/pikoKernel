@@ -1,3 +1,4 @@
+use core::ops::Add;
 use core::{ascii::Char};
 use core::ptr::{write, write_volatile};
 use core::fmt;
@@ -316,7 +317,7 @@ impl DisplayWriter {
     }
 
     pub fn check_if_full(&self) -> bool {
-        if (BUFFER_CAPACITY - self.offset) <= 0 {
+        if (BUFFER_CAPACITY - self.offset) - 1 <= 0 {
             true
         } else {
             false
@@ -355,7 +356,7 @@ pub(crate) use write_and_flush;
 
 impl DisplayWriter {
 
-    pub fn write_from_input_buf(&mut self, input_buf: &InputBuffer)  -> Result<(), VGAError> {
+    /*pub fn write_from_input_buf(&mut self, input_buf: &InputBuffer)  -> Result<(), VGAError> {
         let input_offset = input_buf.idx;
         let frame_idx = self.input_frame;
         let remaining_capacity = BUFFER_CAPACITY - frame_idx;
@@ -381,6 +382,76 @@ impl DisplayWriter {
                 }
             }
             self.offset = self.input_frame + input_offset;
+            self.update_row_and_col();
+            Ok(())
+        } else {
+            Err(VGAError::CopyFromInputError)
+        }
+    }*/
+
+    pub fn write_from_input_buf(&mut self, input_buf: &InputBuffer)  -> Result<(), VGAError> {
+        let input_offset = input_buf.idx;
+        let frame_idx = self.input_frame;
+        let MAX_SAFE_CAPACITY = BUFFER_CAPACITY - 1;
+        if frame_idx >= MAX_SAFE_CAPACITY { return Err(VGAError::CopyFromInputError); }
+        let remaining_capacity = MAX_SAFE_CAPACITY - frame_idx;
+        if input_offset < remaining_capacity {
+            unsafe {
+                let base_ptr: *mut ScreenCharacter = self.buffer.as_mut_ptr() as *mut ScreenCharacter;
+                let input_ptr: *const Char = input_buf.buffer.as_ptr();
+                let mut i = 0;  //input
+                let mut j = 0;  //display
+                let mut cur_col = self.input_frame % BUFFER_WIDTH;
+                while i < input_offset {
+                    let cur_ch = *input_ptr.add(i);
+                    if cur_ch == Char::LineFeed {   //check if input char is newline
+                        let remaining_slots_in_row = 80 - cur_col;
+                        if j + remaining_slots_in_row >= remaining_capacity {
+                            break;  // halt immediately to prevent buffer overflow
+                        }
+                        for k in 0..remaining_slots_in_row {    //overwrite rest of the row with empty chars
+                            core::ptr::write(
+                                base_ptr.add(frame_idx + j + k),
+                                ScreenCharacter {
+                                    ascii_char: 0x00u8,
+                                    attribute: 0x0Fu8,
+                                }
+                            )
+                        }
+                        j += remaining_slots_in_row;
+                        cur_col = 0;
+                    } else {
+                        if j >= remaining_capacity { break; }   //break if no space left
+                        core::ptr::write(
+                            base_ptr.add(frame_idx + j),
+                            ScreenCharacter { 
+                                ascii_char: cur_ch.to_u8(), 
+                                attribute: 0x0F, 
+                            }
+                        );
+                        j += 1;
+                        cur_col += 1;
+                        if cur_col >= 80 {
+                            if self.row_pos >= BUFFER_HEIGHT - 1 {
+                                cur_col = 79;
+                            } else {
+                                cur_col = 0; 
+                            }
+                        }
+                    }
+                    i += 1;
+                }
+                if j < remaining_capacity {
+                    core::ptr::write(
+                        base_ptr.add(frame_idx + j),
+                        ScreenCharacter { 
+                            ascii_char: 0x00u8, 
+                            attribute: 0x0Fu8, 
+                        }
+                    );
+                }
+                self.offset = frame_idx + j;
+            }
             self.update_row_and_col();
             Ok(())
         } else {
