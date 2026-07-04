@@ -86,6 +86,7 @@ impl KeyPress {
         Self { keypress_data: AtomicU16::new(Key::default() as u16) }
     }
 
+    fn get_keypress_data(&self) -> u16 { self.keypress_data.load(Ordering::Relaxed) }
     fn get_keycode(&self) -> u8 { (self.keypress_data.load(Ordering::Relaxed) & 0xFF) as u8 }
     fn get_metadata(&self) -> u8 { (self.keypress_data.load(Ordering::Relaxed) >> 8 & 0xFF) as u8 }
 }
@@ -102,47 +103,75 @@ impl Keyboard {
 
     }
 
-    pub fn update_keypress(&self, scancode: u8) {
+    pub fn try_update_keypress(&self, scancode: u8) {
         unsafe {
             if scancode == EXTENDED_BYTE {  // IMPLEMENT caps, num and scroll lock
                 IS_EXTENDED = true;
             } else {
                 let is_release = (scancode & RELEASE_BYTE) != 0;
-                let keypress = KeyPress { keypress_data: AtomicU16::new(scancode as u16 | (IS_EXTENDED as u16) << 8) };
-                if !is_release {
-                    if KEYPRESS_STACK_POINTER < KEYPRESS_STACK_LENGTH - 1 {    //cap to stack length - 1 for one byte of safety padding at the end
-                        KEYPRESS_STACK[KEYPRESS_STACK_POINTER as usize] = keypress;
-                        KEYPRESS_STACK_POINTER += 1;
-                    } else {
-                        return (); //doesn't register if stack is full
-                    }
-                } else {
-                    for i in (0..KEYPRESS_STACK_POINTER).rev() {
-                        let kp = &mut KEYPRESS_STACK[i as usize];
-                        if kp.get_keycode() == (scancode & !RELEASE_BYTE) {
-                            let kp_ptr = kp as *mut KeyPress;
-                            //ptr::copy(kp_ptr.add(1), kp_ptr, (KEYPRESS_STACK_POINTER - i) as usize); 
-                            let shift_count = (KEYPRESS_STACK_POINTER - 1 - i) as usize;
-                            ptr::copy(kp_ptr.add(1), kp_ptr, shift_count); 
-                            // above, kp_ptr + 1 is safe because of the extra padding byte we added earlier
-                            KEYPRESS_STACK_POINTER -= 1;
-                            break;
-                        }
+                let new_scancode = scancode & !RELEASE_BYTE;    // release byte filtered out
+                let mut is_valid_keypress = true;
+
+                if !is_release && KEYPRESS_STACK_POINTER > 0 {
+                    let most_recent_keypress = &KEYPRESS_STACK[(KEYPRESS_STACK_POINTER - 1) as usize];
+                    let keypress_data = most_recent_keypress.get_keypress_data();
+                    let new_keycode = (keypress_data & 0xFF) as u8;
+                    // FIX: Added explicit grouping parentheses around the bit-shift operation
+                    let extended = ((keypress_data >> 8) & 0x1) as u8;
+                    if new_scancode == new_keycode && IS_EXTENDED as u8 == extended { // ignore qemu hardware spam
+                        is_valid_keypress = false;
                     }
                 }
-                //move_into_input_driver_func(keypress);
-                //call_input_driver_func(self.capslk_on, self.numlk_on, self.scrllk_on);
-                let console_ptr = &raw mut crate::sys::kernel::OS_CONSOLE;
-                (*console_ptr).update_input();
+
+                if is_valid_keypress {
+                    self.update_keypress(new_scancode, is_release);
+                }
                 IS_EXTENDED = false;
             }
         }
     }
 
+    pub fn update_keypress(&self, new_scancode: u8, is_release: bool) {
+    unsafe {
+        let keypress = KeyPress { 
+            keypress_data: AtomicU16::new(new_scancode as u16 | (IS_EXTENDED as u16) << 8) 
+        };
+        if !is_release {
+            //cap to stack length - 1 for one byte of safety padding at the end 
+            if KEYPRESS_STACK_POINTER < KEYPRESS_STACK_LENGTH - 1 {      
+                KEYPRESS_STACK[KEYPRESS_STACK_POINTER as usize] = keypress;
+                KEYPRESS_STACK_POINTER += 1;
+            }
+            //move_into_input_driver_func(keypress);
+            //call_input_driver_func(self.capslk_on, self.numlk_on, self.scrllk_on);
+            let console_ptr = &raw mut crate::sys::kernel::OS_CONSOLE;
+            (*console_ptr).update_input();
+        } else {
+            for i in (0..KEYPRESS_STACK_POINTER).rev() {
+                let kp = &KEYPRESS_STACK[i as usize];
+                let kp_data = kp.get_keypress_data();
+                let kp_keycode = (kp_data & 0xFF) as u8;
+                let kp_extended = (kp_data >> 8 & 0x1) != 0;
+                if kp_keycode == new_scancode && kp_extended == IS_EXTENDED {
+                    let kp_ptr = &raw mut KEYPRESS_STACK[i as usize];
+                    let shift_count = (KEYPRESS_STACK_POINTER - 1 - i) as usize;
+                    if shift_count > 0 {
+                        ptr::copy(kp_ptr.add(1), kp_ptr, shift_count);
+                    }
+                    KEYPRESS_STACK_POINTER -= 1;
+                    KEYPRESS_STACK[KEYPRESS_STACK_POINTER as usize] = KeyPress::default();
+                    break;
+                }
+            }
+        }
+    }
+}
+
+
 }
 
 impl Keyboard {
-    
+
     pub fn initialize() {
         unsafe {
             asm!(
