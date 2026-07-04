@@ -1,5 +1,6 @@
 use core::{arch, mem::MaybeUninit};
 use crate::arch::i686::isr::InterruptHandler;
+use crate::arch::i686::kbd;
 
 pub const PIC1_COMMAND: u16 = 0x20; // master PIC
 pub const PIC1_DATA: u16 = 0x21;
@@ -144,6 +145,7 @@ impl IDT {
                 base: &raw const KERNEL_IDT as *const IDTEntry as u32,
             };
             arch::asm!("lidt [{ptr}]", ptr = in(reg) &raw const IDT_DESCRIPTOR, options(nostack, preserves_flags));
+            //kbd::Keyboard::initialize();
             arch::asm!("sti", options(nostack, preserves_flags));
         }
     }

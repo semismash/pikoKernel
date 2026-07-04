@@ -1,5 +1,6 @@
 use core::sync::atomic::{AtomicU16, Ordering};
 use core::ptr;
+use core::arch::asm;
 
 use crate::arch::i686::kbd::Key::S;
 
@@ -8,7 +9,7 @@ const EXTENDED_BYTE: u8 = 0xE0;
 
 pub const KEYPRESS_STACK_LENGTH: u8 = 128;
 
-pub static mut KEYBOARD: Keyboard = Keyboard { capslk_on: false, numlk_on: false, scrllk_on: false };
+pub static mut KEYBOARD: Keyboard = Keyboard::new();
 
 static mut IS_EXTENDED: bool = false;
 pub static mut KEYPRESS_STACK: [KeyPress; KEYPRESS_STACK_LENGTH as usize] = {
@@ -91,12 +92,14 @@ impl KeyPress {
 
 impl Keyboard {
 
-    pub fn initialize() -> Self {
+    pub const fn new() -> Self {
+
         Self {
             capslk_on: false,
             numlk_on: false,
             scrllk_on: false,
         }
+
     }
 
     pub fn update_keypress(&self, scancode: u8) {
@@ -133,6 +136,71 @@ impl Keyboard {
                 (*console_ptr).update_input();
                 IS_EXTENDED = false;
             }
+        }
+    }
+
+}
+
+impl Keyboard {
+    
+    pub fn initialize() {
+        unsafe {
+            asm!(
+                "2:",
+                "in al, 0x64",
+                "test al, 0x02", 
+                "jnz 2b",
+                options(nostack, nomem)
+            );
+
+            asm!(
+                "out 0x60, al",
+                in("al") 0xF3u8,
+                options(nostack, nomem)
+            );
+
+            asm!(
+                "3:",
+                "in al, 0x64",
+                "test al, 0x01",
+                "jz 3b",
+                options(nostack, nomem)
+            );
+
+            let mut ack: u8;
+            asm!(
+                "in al, 0x60",
+                out("al") ack,
+                options(nostack, nomem)
+            );
+
+            asm!(
+                "4:",
+                "in al, 0x64",
+                "test al, 0x02",
+                "jnz 4b",
+                options(nostack, nomem)
+            );
+
+            asm!(
+                "out 0x60, al",
+                in("al") 0x7Fu8,
+                options(nostack, nomem)
+            );
+
+            asm!(
+                "5:",
+                "in al, 0x64",
+                "test al, 0x01",
+                "jz 5b",
+                options(nostack, nomem)
+            );
+
+            asm!(
+                "in al, 0x60",
+                out("al") ack,
+                options(nostack, nomem)
+            );
         }
     }
 

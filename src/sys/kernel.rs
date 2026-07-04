@@ -26,7 +26,7 @@ pub fn main() -> ! {
         let entry_count = (desc.limit + 1) / 8;
         let gdt_ptr = desc.base as *const u64;
 
-        //set up IDT and PIT
+        //set up interrupts and I/O
         i686::idt::PIC::remap_PIC();
         i686::idt::IDT::initialize();
         i686::pit::PIT::initialize();
@@ -34,7 +34,7 @@ pub fn main() -> ! {
         //enable text and cursor
         i686::vga::enable_cursor(14, 15);
 
-        sys::console::println!("OS BOOT!");
+        sys::console::print!("OS BOOT!");
 
         /*sys::console::write!("Value of CS is {:X}\n", cs);
         sys::console::write!("Value of DS is {:X}\n", ds);

@@ -126,11 +126,13 @@ impl DisplayWriter {
                     self.row_pos += 1;
                     self.col_pos = 0;
                     self.offset = self.get_offset();
+                    self.input_frame = self.offset;
                 } else {
                     if self.col_pos >= BUFFER_WIDTH {
                         self.row_pos += 1;
                         self.col_pos = 0;
                         self.offset = self.get_offset();
+                        self.input_frame = self.offset;
                     }
                     let char_ptr = self.buffer
                         .get_unchecked_mut(self.row_pos)
@@ -139,6 +141,7 @@ impl DisplayWriter {
                     core::ptr::write(char_ptr, char);
                     self.col_pos += 1;
                     self.offset += 1;
+                    self.input_frame += 1;
                 }
                 Ok(())
             }
@@ -224,6 +227,7 @@ impl DisplayWriter {
         self.row_pos = 0;
         self.col_pos = 0;
         self.offset = 0;
+        self.input_frame = self.offset;
     }
 
     fn get_offset(&self) -> usize {
@@ -351,27 +355,27 @@ pub(crate) use write_and_flush;
 
 impl DisplayWriter {
 
-    pub fn write_from_input_buf(&mut self, input_buf: &InputBuffer) -> Result<(), VGAError> {
-        let buf_offset = self.offset;
+    pub fn write_from_input_buf(&mut self, input_buf: &InputBuffer)  -> Result<(), VGAError> {
         let input_offset = input_buf.idx;
-        if input_offset < BUFFER_CAPACITY - self.offset - 1 {
-            let frame_idx = self.input_frame;
+        let frame_idx = self.input_frame;
+        if input_offset < BUFFER_CAPACITY - frame_idx {
             unsafe {
-                let input_frame_ptr: *mut ScreenCharacter = &mut self.buffer[frame_idx] as *mut ScreenCharacter;
-                let input_buf_ptr: *const Char = input_buf.buffer.as_ptr() as *const Char;
+                let base_ptr: *mut ScreenCharacter = self.buffer.as_mut_ptr() as *mut ScreenCharacter;
+                let frame_ptr: *mut ScreenCharacter = base_ptr.add(frame_idx);
+                let input_ptr: *const Char = input_buf.buffer.as_ptr();
                 let mut i = 0;
                 while i < input_offset {
                     core::ptr::write(
-                        input_frame_ptr.add(buf_offset + i),
+                        frame_ptr.add(i),
                         ScreenCharacter { 
-                            ascii_char: (*input_buf_ptr.add(i)).to_u8(), // conv to u8
-                            attribute: 0x0F,
+                            ascii_char: (*input_ptr.add(i)).to_u8(), 
+                            attribute: 0x0F, 
                         }
                     );
-                    i += 1;
+                    i += 1
                 }
             }
-            self.offset = self.input_frame + buf_offset + input_offset;
+            self.offset = self.input_frame + input_offset;
             self.update_row_and_col();
             Ok(())
         } else {

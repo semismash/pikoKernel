@@ -55,7 +55,7 @@ impl Console {
                     (*os_ptr).flush_sync(FRAME);
                 }
             },
-            EchoMode::OnEnter => {
+            EchoMode::OnEnter => {  // CHECK
                 unsafe {
                     let kbd_ptr = &raw const crate::arch::i686::kbd::KEYPRESS_STACK;
                     let input_ptr = &raw mut INPUT_BUFFER;
