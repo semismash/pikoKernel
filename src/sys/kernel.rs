@@ -34,30 +34,30 @@ pub fn main() -> ! {
         //enable text and cursor
         i686::vga::enable_cursor(14, 15);
 
-        sys::console::print!("OS BOOT!");
+        sys::console::println!("OS BOOT!");
 
-        /*sys::console::write!("Value of CS is {:X}\n", cs);
-        sys::console::write!("Value of DS is {:X}\n", ds);
+        // sys::console::write!("Value of CS is {:X}\n", cs);
+        // sys::console::write!("Value of DS is {:X}\n", ds);
 
-        for i in 0..entry_count {
-            let raw_entry: u64 = unsafe { *gdt_ptr.add(i as usize) };
-            sys::console::write!("Entry {}: {:X}\n", i, raw_entry);
-        }
-        sys::console::write_and_flush!();
+        // for i in 0..entry_count {
+        //     let raw_entry: u64 = unsafe { *gdt_ptr.add(i as usize) };
+        //     sys::console::write!("Entry {}: {:X}\n", i, raw_entry);
+        // }
+        // sys::console::write_and_flush!();
 
-        //test delay
-        crate::sys::time::SysTime::delay(2000);
+        // //test delay
+        // crate::sys::time::SysTime::delay(2000);
 
-        sys::console::println!("OS BOOTED!");
-        sys::console::println!("Red colored texted", FGColor::Red);
-        sys::console::print!("I'm a ", FGColor::Magenta);
-        sys::console::print!("Rustacean", FGColor::Yellow);
-        sys::console::println!(", what's up?", FGColor::Magenta);
+        // sys::console::println!("OS BOOTED!");
+        // sys::console::println!("Red colored texted", FGColor::Red);
+        // sys::console::print!("I'm a ", FGColor::Magenta);
+        // sys::console::print!("Rustacean", FGColor::Yellow);
+        // sys::console::println!(", what's up?", FGColor::Magenta);
 
-        for i in 0..9 {
-            sys::console::print!("Tung ", FGColor::Yellow);
-        }
-        sys::console::println!("Sahur", FGColor::Green);*/
+        // for i in 0..9 {
+        //     sys::console::print!("Tung ", FGColor::Yellow);
+        // }
+        // sys::console::println!("Sahur", FGColor::Green);
 
         //time::delay(2);
         //panic!("asfdfasdfasgdewgw");
