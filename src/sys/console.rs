@@ -32,7 +32,7 @@ impl Console {
     pub const fn initialize() -> Self {
         Self {
             cur_action: InputAction::None,
-            echo_mode: EchoMode::Immediate,
+            echo_mode: EchoMode::Silent,
         }
     }
 
@@ -41,16 +41,14 @@ impl Console {
     }
 
     pub fn update_input(&mut self) {
+        let kbd_ptr = &raw const crate::arch::i686::kbd::KEYPRESS_STACK;
+        let input_ptr = &raw mut INPUT_BUFFER;
+        let os_ptr = &raw mut OS_BUFFER;
+        let cur_stack_size = *(&raw const crate::arch::i686::kbd::KEYPRESS_STACK_POINTER);
         match self.echo_mode {
             EchoMode::None => {},
             EchoMode::Immediate => {
-                unsafe { 
-                    let kbd_ptr = &raw const crate::arch::i686::kbd::KEYPRESS_STACK;
-                    let input_ptr = &raw mut INPUT_BUFFER;
-                    let os_ptr = &raw mut OS_BUFFER;
-
-                    let cur_stack_size = *(&raw const crate::arch::i686::kbd::KEYPRESS_STACK_POINTER);
-
+                unsafe {
                     self.cur_action = input::get_action(&*kbd_ptr, cur_stack_size); 
                     if !(matches!(self.cur_action, InputAction::AddChar(..)) || self.cur_action == InputAction::Submit)
                         || !((*os_ptr).check_if_full() || (*input_ptr).is_full())
@@ -61,33 +59,28 @@ impl Console {
                     }
                 }
             },
-            // TURNED OFF FOR DEBUGGING PURPOSE
-            /*EchoMode::OnEnter => {  // CHECK
+            EchoMode::OnEnter => {  // CHECK
                 unsafe {
-                    let kbd_ptr = &raw const crate::arch::i686::kbd::KEYPRESS_STACK;
-                    let input_ptr = &raw mut INPUT_BUFFER;
-                    let os_ptr = &raw mut OS_BUFFER;
-
-                    self.cur_action = input::get_action(&*kbd_ptr);
-                    (*input_ptr).execute_action(self.cur_action);
-                    (*os_ptr).write_from_input_buf(&*input_ptr);
-                    if self.cur_action == InputAction::Submit { 
-                        (*os_ptr).flush_sync(FRAME); 
+                    self.cur_action = input::get_action(&*kbd_ptr, cur_stack_size);
+                    if !(matches!(self.cur_action, InputAction::AddChar(..)) || self.cur_action == InputAction::Submit)
+                        || !((*os_ptr).check_if_full() || (*input_ptr).is_full()) {
+                        (*input_ptr).execute_action(self.cur_action);
+                        (*os_ptr).write_from_input_buf(&*input_ptr);
+                        if self.cur_action == InputAction::Submit { 
+                            (*os_ptr).flush_sync(FRAME); 
+                        }
                     }
                 }
             },
             EchoMode::Silent => {
                 unsafe {
-                    let kbd_ptr = &raw const crate::arch::i686::kbd::KEYPRESS_STACK;
-                    let input_ptr = &raw mut INPUT_BUFFER;
-
-                    self.cur_action = input::get_action(&*kbd_ptr);
+                    self.cur_action = input::get_action(&*kbd_ptr, cur_stack_size);
                     (*input_ptr).execute_action(self.cur_action);
                 }
             },
             /*EchoMode::Masked(mask_char) => {
 
-            },*/ */
+            },*/ 
             _ => {}
         }
     }
