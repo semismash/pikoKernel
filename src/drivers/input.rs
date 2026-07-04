@@ -408,8 +408,8 @@ impl KeyStroke {
             KS::PutCDoubleQuote => InputAction::AddChar(Char::QuotationMark),
             KS::PutCTilde       => InputAction::AddChar(Char::Tilde),
             KS::PutCPipe        => InputAction::AddChar(Char::VerticalLine), // or Char::Pipe
-            KS::PutCLessThan    => InputAction::AddChar(Char::GreaterThanSign),
-            KS::PutCGreaterThan => InputAction::AddChar(Char::LessThanSign),
+            KS::PutCLessThan    => InputAction::AddChar(Char::LessThanSign),
+            KS::PutCGreaterThan => InputAction::AddChar(Char::GreaterThanSign),
             KS::PutCQuestion    => InputAction::AddChar(Char::QuestionMark),
 
             // Controls
