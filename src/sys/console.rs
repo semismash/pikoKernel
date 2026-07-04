@@ -32,7 +32,7 @@ impl Console {
     pub const fn initialize() -> Self {
         Self {
             cur_action: InputAction::None,
-            echo_mode: EchoMode::Silent,
+            echo_mode: EchoMode::Immediate,
         }
     }
 
@@ -44,44 +44,46 @@ impl Console {
         let kbd_ptr = &raw const crate::arch::i686::kbd::KEYPRESS_STACK;
         let input_ptr = &raw mut INPUT_BUFFER;
         let os_ptr = &raw mut OS_BUFFER;
-        let cur_stack_size = *(&raw const crate::arch::i686::kbd::KEYPRESS_STACK_POINTER);
-        match self.echo_mode {
-            EchoMode::None => {},
-            EchoMode::Immediate => {
-                unsafe {
+        unsafe { 
+            let cur_stack_size = *(&raw const crate::arch::i686::kbd::KEYPRESS_STACK_POINTER);
+            match self.echo_mode {
+                EchoMode::None => {},
+                EchoMode::Immediate => {
                     self.cur_action = input::get_action(&*kbd_ptr, cur_stack_size); 
-                    if !(matches!(self.cur_action, InputAction::AddChar(..)) || self.cur_action == InputAction::Submit)
+                    if self.cur_action == InputAction::Submit && (*os_ptr).row_pos >= BUFFER_HEIGHT - 1 {
+                        self.cur_action = InputAction::None;
+                    }
+                    if !(matches!(self.cur_action, InputAction::AddChar(..)) 
+                        || (self.cur_action == InputAction::Submit))
                         || !((*os_ptr).check_if_full() || (*input_ptr).is_full())
                     {    
                         (*input_ptr).execute_action(self.cur_action); 
                         (*os_ptr).write_from_input_buf(&*input_ptr);
                         (*os_ptr).flush_sync(FRAME);
                     }
-                }
-            },
-            EchoMode::OnEnter => {  // CHECK
-                unsafe {
+                },
+                EchoMode::OnEnter => {  
                     self.cur_action = input::get_action(&*kbd_ptr, cur_stack_size);
+
+                    if self.cur_action == InputAction::Submit && (*os_ptr).row_pos >= BUFFER_HEIGHT - 1 {
+                        self.cur_action = InputAction::None;
+                    }
                     if !(matches!(self.cur_action, InputAction::AddChar(..)) || self.cur_action == InputAction::Submit)
-                        || !((*os_ptr).check_if_full() || (*input_ptr).is_full()) {
+                        || !((*os_ptr).check_if_full() || (*input_ptr).is_full()) 
+                    {
                         (*input_ptr).execute_action(self.cur_action);
                         (*os_ptr).write_from_input_buf(&*input_ptr);
                         if self.cur_action == InputAction::Submit { 
                             (*os_ptr).flush_sync(FRAME); 
                         }
                     }
-                }
-            },
-            EchoMode::Silent => {
-                unsafe {
+                },
+                EchoMode::Silent => {
                     self.cur_action = input::get_action(&*kbd_ptr, cur_stack_size);
                     (*input_ptr).execute_action(self.cur_action);
-                }
-            },
-            /*EchoMode::Masked(mask_char) => {
-
-            },*/ 
-            _ => {}
+                },
+                _ => {}
+            }
         }
     }
 

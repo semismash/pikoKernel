@@ -132,105 +132,40 @@ impl Keyboard {
     }
 
     pub fn update_keypress(&self, new_scancode: u8, is_release: bool) {
-    unsafe {
-        let keypress = KeyPress { 
-            keypress_data: AtomicU16::new(new_scancode as u16 | (IS_EXTENDED as u16) << 8) 
-        };
-        if !is_release {
-            //cap to stack length - 1 for one byte of safety padding at the end 
-            if KEYPRESS_STACK_POINTER < KEYPRESS_STACK_LENGTH - 1 {      
-                KEYPRESS_STACK[KEYPRESS_STACK_POINTER as usize] = keypress;
-                KEYPRESS_STACK_POINTER += 1;
-            }
-            //move_into_input_driver_func(keypress);
-            //call_input_driver_func(self.capslk_on, self.numlk_on, self.scrllk_on);
-            let console_ptr = &raw mut crate::sys::kernel::OS_CONSOLE;
-            (*console_ptr).update_input();
-        } else {
-            for i in (0..KEYPRESS_STACK_POINTER).rev() {
-                let kp = &KEYPRESS_STACK[i as usize];
-                let kp_data = kp.get_keypress_data();
-                let kp_keycode = (kp_data & 0xFF) as u8;
-                let kp_extended = (kp_data >> 8 & 0x1) != 0;
-                if kp_keycode == new_scancode && kp_extended == IS_EXTENDED {
-                    let kp_ptr = &raw mut KEYPRESS_STACK[i as usize];
-                    let shift_count = (KEYPRESS_STACK_POINTER - 1 - i) as usize;
-                    if shift_count > 0 {
-                        ptr::copy(kp_ptr.add(1), kp_ptr, shift_count);
+        unsafe {
+            let keypress = KeyPress { 
+                keypress_data: AtomicU16::new(new_scancode as u16 | (IS_EXTENDED as u16) << 8) 
+            };
+            if !is_release {
+                //cap to stack length - 1 for one byte of safety padding at the end 
+                if KEYPRESS_STACK_POINTER < KEYPRESS_STACK_LENGTH - 1 {      
+                    KEYPRESS_STACK[KEYPRESS_STACK_POINTER as usize] = keypress;
+                    KEYPRESS_STACK_POINTER += 1;
+                }
+                //move_into_input_driver_func(keypress);
+                //call_input_driver_func(self.capslk_on, self.numlk_on, self.scrllk_on);
+                let console_ptr = &raw mut crate::sys::kernel::OS_CONSOLE;
+                (*console_ptr).update_input();
+            } else {
+                for i in (0..KEYPRESS_STACK_POINTER).rev() {
+                    let kp = &KEYPRESS_STACK[i as usize];
+                    let kp_data = kp.get_keypress_data();
+                    let kp_keycode = (kp_data & 0xFF) as u8;
+                    let kp_extended = (kp_data >> 8 & 0x1) != 0;
+                    if kp_keycode == new_scancode && kp_extended == IS_EXTENDED {
+                        let kp_ptr = &raw mut KEYPRESS_STACK[i as usize];
+                        let shift_count = (KEYPRESS_STACK_POINTER - 1 - i) as usize;
+                        if shift_count > 0 {
+                            ptr::copy(kp_ptr.add(1), kp_ptr, shift_count);
+                        }
+                        KEYPRESS_STACK_POINTER -= 1;
+                        KEYPRESS_STACK[KEYPRESS_STACK_POINTER as usize] = KeyPress::default();
+                        break;
                     }
-                    KEYPRESS_STACK_POINTER -= 1;
-                    KEYPRESS_STACK[KEYPRESS_STACK_POINTER as usize] = KeyPress::default();
-                    break;
                 }
             }
         }
     }
-}
 
-
-}
-
-impl Keyboard {
-
-    pub fn initialize() {
-        unsafe {
-            asm!(
-                "2:",
-                "in al, 0x64",
-                "test al, 0x02", 
-                "jnz 2b",
-                options(nostack, nomem)
-            );
-
-            asm!(
-                "out 0x60, al",
-                in("al") 0xF3u8,
-                options(nostack, nomem)
-            );
-
-            asm!(
-                "3:",
-                "in al, 0x64",
-                "test al, 0x01",
-                "jz 3b",
-                options(nostack, nomem)
-            );
-
-            let mut ack: u8;
-            asm!(
-                "in al, 0x60",
-                out("al") ack,
-                options(nostack, nomem)
-            );
-
-            asm!(
-                "4:",
-                "in al, 0x64",
-                "test al, 0x02",
-                "jnz 4b",
-                options(nostack, nomem)
-            );
-
-            asm!(
-                "out 0x60, al",
-                in("al") 0x7Fu8,
-                options(nostack, nomem)
-            );
-
-            asm!(
-                "5:",
-                "in al, 0x64",
-                "test al, 0x01",
-                "jz 5b",
-                options(nostack, nomem)
-            );
-
-            asm!(
-                "in al, 0x60",
-                out("al") ack,
-                options(nostack, nomem)
-            );
-        }
-    }
 
 }

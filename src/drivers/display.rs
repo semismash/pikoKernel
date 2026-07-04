@@ -21,9 +21,9 @@ unsafe impl Sync for FramePointer {}
 #[repr(C)]
 pub struct DisplayWriter {
     buffer: Buffer,
-    row_pos: usize,
-    col_pos: usize,
-    offset: usize,
+    pub row_pos: usize,
+    pub col_pos: usize,
+    pub offset: usize,
     input_frame: usize,
     on_cursor_update: Option<fn(usize, usize)>,
     last_tick: u32, // for concurrency and synchronization
@@ -383,12 +383,12 @@ impl DisplayWriter {
 
                     let cur_ch = *input_ptr.add(i);
                     if cur_ch == Char::LineFeed {
-                        let remaining_slots_in_row = BUFFER_WIDTH - cur_col;
-                        if j + remaining_slots_in_row >= remaining_capacity {
-                            break;  // halt immediately to prevent buffer overflow
-                        }
-                        j += remaining_slots_in_row;
-                        cur_col = 0;
+                            let remaining_slots_in_row = BUFFER_WIDTH - cur_col;
+                            if j + remaining_slots_in_row >= remaining_capacity {
+                                break;  // halt immediately to prevent buffer overflow
+                            }
+                            j += remaining_slots_in_row;
+                            cur_col = 0;
                     } else {
                         core::ptr::write(
                             base_ptr.add(frame_idx + j),
