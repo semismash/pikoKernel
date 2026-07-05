@@ -132,6 +132,36 @@ impl InputBuffer {
         self.write_char(Char::LineFeed)
     }
 
+    pub fn move_idx(&mut self, dir: MoveDirection) {
+        match dir {
+            MoveDirection::Left => {
+                if self.idx > 0 { self.idx -= 1; }
+            },
+            MoveDirection::Right => {
+                if self.idx < self.offset { self.idx += 1; }
+            },
+            MoveDirection::Up => {
+                if self.idx == 0 { return; }
+                let (cur_row, cur_col) = self.visual_pos_of(self.idx);
+                if cur_row == 0 { self.idx = 0; return; }
+                self.idx = self.find_idx_at_visual(cur_row - 1, cur_col);
+            },
+            MoveDirection::Down => {
+                if self.idx >= self.offset { return; }
+                let (cur_row, cur_col) = self.visual_pos_of(self.idx);
+                self.idx = self.find_idx_at_visual(cur_row + 1, cur_col);
+            },
+        }
+    }
+
+    pub fn is_full(&self) -> bool {
+        (BUFFER_LENGTH - self.offset) - 1 <= 0
+    }
+
+}
+
+impl InputBuffer {  // helpers
+
     // convert to visual position first, to get a better idea of where the cursor will be
     fn visual_pos_of(&self, buf_idx: usize) -> (usize, usize) {
         let mut row = 0;
@@ -169,32 +199,6 @@ impl InputBuffer {
             }
         }
         last_on_row.unwrap_or(self.offset)  // target row past content, or clamp to row end
-    }
-
-    pub fn move_idx(&mut self, dir: MoveDirection) {
-        match dir {
-            MoveDirection::Left => {
-                if self.idx > 0 { self.idx -= 1; }
-            },
-            MoveDirection::Right => {
-                if self.idx < self.offset { self.idx += 1; }
-            },
-            MoveDirection::Up => {
-                if self.idx == 0 { return; }
-                let (cur_row, cur_col) = self.visual_pos_of(self.idx);
-                if cur_row == 0 { self.idx = 0; return; }
-                self.idx = self.find_idx_at_visual(cur_row - 1, cur_col);
-            },
-            MoveDirection::Down => {
-                if self.idx >= self.offset { return; }
-                let (cur_row, cur_col) = self.visual_pos_of(self.idx);
-                self.idx = self.find_idx_at_visual(cur_row + 1, cur_col);
-            },
-        }
-    }
-
-    pub fn is_full(&self) -> bool {
-        (BUFFER_LENGTH - self.offset) - 1 <= 0
     }
 
 }
