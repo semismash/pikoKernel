@@ -82,6 +82,11 @@ impl Console {
                     self.cur_action = input::get_action(&*kbd_ptr, cur_stack_size);
                     (*input_ptr).execute_action(self.cur_action);
                 },
+                /*
+                EchoMode::Masked(ch) => {
+                
+                }
+                */
                 _ => {}
             }
         }

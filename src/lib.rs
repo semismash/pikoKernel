@@ -8,11 +8,11 @@
 
 #[macro_use]
 pub mod sys;
-
-pub mod arch;
-
 #[macro_use]
 pub mod drivers;
+pub mod arch;
+pub mod mem;
+pub mod sub;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kernel_main() -> ! {
