@@ -6,7 +6,7 @@ use crate::drivers::input;
 use crate::drivers::input::InputAction::{AddChar, Cancel, DelChar, BackChar, Submit};
 use core::sync::atomic::Ordering;
 
-pub const BUFFER_LENGTH: usize = 256;
+pub const BUFFER_LENGTH: usize = 1000;
 
 const KEYSTROKE_MAX_COUNT: usize = 256;
 const KEYSTROKE_CAPACITY: usize = 8;   //max 8 keystrokes per keystroke, implemented by software, practically will never reach this high
@@ -132,6 +132,45 @@ impl InputBuffer {
         self.write_char(Char::LineFeed)
     }
 
+    // convert to visual position first, to get a better idea of where the cursor will be
+    fn visual_pos_of(&self, buf_idx: usize) -> (usize, usize) {
+        let mut row = 0;
+        let mut col = 0;
+        for i in 0..buf_idx.min(self.offset) {
+            if self.buffer[i] == Char::LineFeed {
+                row += 1; col = 0;
+            } else {
+                col += 1;
+                if col >= crate::drivers::display::BUFFER_WIDTH { col = 0; row += 1; }
+            }
+        }
+        (row, col)
+    }
+
+    // find the corresponding idx value using the info we have, to set the new current cursor position
+    // used some ai help for this code snippet cuz it was almost 2am in the night and i was feeling depressed af due to family and relationship issues
+    fn find_idx_at_visual(&self, target_row: usize, target_col: usize) -> usize {
+        let mut row = 0;
+        let mut col = 0;
+        let mut last_on_row: Option<usize> = None;
+        for i in 0..=self.offset {
+            if row == target_row {
+                if col == target_col { return i; }
+                last_on_row = Some(i);  // keep updating
+            } else if row > target_row {
+                return last_on_row.unwrap_or(self.offset);  // clamp to end of left row
+            }
+            if i == self.offset { break; }
+            if self.buffer[i] == Char::LineFeed {
+                row += 1; col = 0;
+            } else {
+                col += 1;
+                if col >= crate::drivers::display::BUFFER_WIDTH { col = 0; row += 1; }
+            }
+        }
+        last_on_row.unwrap_or(self.offset)  // target row past content, or clamp to row end
+    }
+
     pub fn move_idx(&mut self, dir: MoveDirection) {
         match dir {
             MoveDirection::Left => {
@@ -142,59 +181,15 @@ impl InputBuffer {
             },
             MoveDirection::Up => {
                 if self.idx == 0 { return; }
-                //calculate target offset relative to start of cur line
-                let mut cur_line_start = self.idx;
-                while cur_line_start > 0 && self.buffer[cur_line_start - 1] != Char::LineFeed {
-                    cur_line_start -= 1;
-                }
-                let target_col_offset = self.idx - cur_line_start;
-                if cur_line_start == 0 {    // snap to beginning if no line above
-                    self.idx = 0;
-                    return;
-                }
-                //scan backwards to beginning of previous line
-                let mut prev_line_end = cur_line_start - 1; // sits exactly on the delimiter \n
-                let mut prev_line_start = prev_line_end;
-                while prev_line_start > 0 && self.buffer[prev_line_start - 1] != Char::LineFeed {
-                    prev_line_start -= 1;
-                }
-                let prev_line_len = prev_line_end - prev_line_start;
-                //jump to prev line line and clamp length if smaller
-                if target_col_offset <= prev_line_len {
-                    self.idx = prev_line_start + target_col_offset;
-                } else {
-                    self.idx = prev_line_end;
-                }
+                let (cur_row, cur_col) = self.visual_pos_of(self.idx);
+                if cur_row == 0 { self.idx = 0; return; }
+                self.idx = self.find_idx_at_visual(cur_row - 1, cur_col);
             },
             MoveDirection::Down => {
                 if self.idx >= self.offset { return; }
-                let mut cur_line_start = self.idx;
-                while cur_line_start > 0 && self.buffer[cur_line_start - 1] != Char::LineFeed {
-                    cur_line_start -= 1;
-                }
-                let target_col_offset = self.idx - cur_line_start;
-                //same thing as b4 but scan forwards
-                let mut cur_line_end = self.idx;
-                while cur_line_end < self.offset && self.buffer[cur_line_end] != Char::LineFeed {
-                    cur_line_end += 1;
-                }
-                //if nothing, jump to end
-                if cur_line_end >= self.offset {
-                    self.idx = self.offset;
-                    return;
-                }
-                let next_line_start = cur_line_end + 1; // go 1 cell past deliminter
-                let mut next_line_end = next_line_start;
-                while next_line_end < self.offset && self.buffer[next_line_end] != Char::LineFeed {
-                    next_line_end += 1;
-                }
-                let next_line_len = next_line_end - next_line_start;
-                if target_col_offset <= next_line_len {
-                    self.idx = next_line_start + target_col_offset;
-                } else {
-                    self.idx = next_line_end;
-                }
-            }
+                let (cur_row, cur_col) = self.visual_pos_of(self.idx);
+                self.idx = self.find_idx_at_visual(cur_row + 1, cur_col);
+            },
         }
     }
 
