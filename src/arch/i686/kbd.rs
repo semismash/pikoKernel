@@ -1,25 +1,15 @@
 use core::sync::atomic::{AtomicU16, Ordering};
 use core::ptr;
-use core::arch::asm;
 
-use crate::arch::i686::kbd::Key::S;
+use crate::sub::spin::{self, SpinLock, SpinLockGuard};
 
 const RELEASE_BYTE: u8 = 0x80;
 const EXTENDED_BYTE: u8 = 0xE0;
 
-pub const KEYPRESS_STACK_LENGTH: u8 = 128;
-
 pub static mut KEYBOARD: Keyboard = Keyboard::new();
 
 static mut IS_EXTENDED: bool = false;
-pub static mut KEYPRESS_STACK: [KeyPress; KEYPRESS_STACK_LENGTH as usize] = {
-    const INIT: KeyPress = KeyPress { keypress_data: AtomicU16::new(0) };
-    [INIT; KEYPRESS_STACK_LENGTH as usize]
-};
-/*pub static mut KEYPRESS_STACK: [KeyPress; KEYPRESS_STACK_LENGTH as usize] 
-    = core::array::from_fn(|_| KeyPress { keypress_data: AtomicU16::new(0) } );*/
-    // = [KeyPress { keypress_data: AtomicU16::new(0) }; KEYPRESS_STACK_LENGTH as usize];
-pub static mut KEYPRESS_STACK_POINTER: u8 = 0;  // POSITION OF THE NEXT FREE SLOT
+pub static KEYPRESS_STACK: SpinLock<KeypressStack> = SpinLock::new(KeypressStack::new());
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
@@ -66,6 +56,11 @@ pub struct Keyboard {
     scrllk_on: bool,
 }
 
+pub struct KeypressStack {
+    stack: [KeyPress; Self::KEYPRESS_STACK_LENGTH as usize],
+    stack_ptr: u8,
+}
+
 #[derive(Debug)]
 #[repr(C)]
 pub struct KeyPress {
@@ -87,8 +82,32 @@ impl KeyPress {
     }
 
     fn get_keypress_data(&self) -> u16 { self.keypress_data.load(Ordering::Relaxed) }
-    fn get_keycode(&self) -> u8 { (self.keypress_data.load(Ordering::Relaxed) & 0xFF) as u8 }
-    fn get_metadata(&self) -> u8 { (self.keypress_data.load(Ordering::Relaxed) >> 8 & 0xFF) as u8 }
+    //fn get_keycode(&self) -> u8 { (self.keypress_data.load(Ordering::Relaxed) & 0xFF) as u8 }
+    //fn get_metadata(&self) -> u8 { (self.keypress_data.load(Ordering::Relaxed) >> 8 & 0xFF) as u8 }
+}
+
+impl KeypressStack {
+
+    pub const KEYPRESS_STACK_LENGTH: u8 = 128;
+
+    pub const fn new() -> Self {
+        Self { 
+            stack: {
+                const INIT: KeyPress = KeyPress { keypress_data: AtomicU16::new(0) };
+                [INIT; Self::KEYPRESS_STACK_LENGTH as usize]
+            }, 
+            stack_ptr: 0,
+        }
+    }
+
+    pub fn get_top_key(&mut self) -> &mut KeyPress {
+        &mut self.stack[(self.stack_ptr - 1) as usize]
+    }
+
+    pub fn get_next_free(&mut self) -> &mut KeyPress {
+        &mut self.stack[self.stack_ptr as usize]
+    }
+
 }
 
 impl Keyboard {
@@ -104,6 +123,7 @@ impl Keyboard {
     }
 
     pub fn try_update_keypress(&self, scancode: u8) {
+        let mut kbd = KEYPRESS_STACK.lock();
         unsafe {
             if scancode == EXTENDED_BYTE {  // IMPLEMENT caps, num and scroll lock
                 IS_EXTENDED = true;
@@ -112,11 +132,10 @@ impl Keyboard {
                 let new_scancode = scancode & !RELEASE_BYTE;    // release byte filtered out
                 let mut is_valid_keypress = true;
 
-                if !is_release && KEYPRESS_STACK_POINTER > 0 {
-                    let most_recent_keypress = &KEYPRESS_STACK[(KEYPRESS_STACK_POINTER - 1) as usize];
+                if !is_release && kbd.stack_ptr > 0 {
+                    let most_recent_keypress = kbd.get_top_key();
                     let keypress_data = most_recent_keypress.get_keypress_data();
                     let new_keycode = (keypress_data & 0xFF) as u8;
-                    // FIX: Added explicit grouping parentheses around the bit-shift operation
                     let extended = ((keypress_data >> 8) & 0x1) as u8;
                     if new_scancode == new_keycode && IS_EXTENDED as u8 == extended { // ignore qemu hardware spam
                         is_valid_keypress = false;
@@ -124,48 +143,47 @@ impl Keyboard {
                 }
 
                 if is_valid_keypress {
-                    self.update_keypress(new_scancode, is_release);
+                    self.update_keypress(&mut *kbd, new_scancode, is_release);
                 }
                 IS_EXTENDED = false;
             }
         }
     }
 
-    pub fn update_keypress(&self, new_scancode: u8, is_release: bool) {
+    pub fn update_keypress(&self, kbd: &mut KeypressStack, new_scancode: u8, is_release: bool) {
         unsafe {
+            let stack_ptr = kbd.stack_ptr;
             let keypress = KeyPress { 
                 keypress_data: AtomicU16::new(new_scancode as u16 | (IS_EXTENDED as u16) << 8) 
             };
             if !is_release {
                 //cap to stack length - 1 for one byte of safety padding at the end 
-                if KEYPRESS_STACK_POINTER < KEYPRESS_STACK_LENGTH - 1 {      
-                    KEYPRESS_STACK[KEYPRESS_STACK_POINTER as usize] = keypress;
-                    KEYPRESS_STACK_POINTER += 1;
+                if stack_ptr < KeypressStack::KEYPRESS_STACK_LENGTH - 1 {      
+                    *kbd.get_next_free() = keypress;
+                    kbd.stack_ptr += 1;
                 }
-                //move_into_input_driver_func(keypress);
                 //call_input_driver_func(self.capslk_on, self.numlk_on, self.scrllk_on);
                 let console_ptr = &raw mut crate::sys::kernel::OS_CONSOLE;
                 (*console_ptr).update_input();
             } else {
-                for i in (0..KEYPRESS_STACK_POINTER).rev() {
-                    let kp = &KEYPRESS_STACK[i as usize];
+                for i in (0..stack_ptr).rev() {
+                    let kp = &mut kbd.stack[i as usize];
                     let kp_data = kp.get_keypress_data();
                     let kp_keycode = (kp_data & 0xFF) as u8;
                     let kp_extended = (kp_data >> 8 & 0x1) != 0;
                     if kp_keycode == new_scancode && kp_extended == IS_EXTENDED {
-                        let kp_ptr = &raw mut KEYPRESS_STACK[i as usize];
-                        let shift_count = (KEYPRESS_STACK_POINTER - 1 - i) as usize;
+                        let kp_ptr = kp as *mut Keypress;
+                        let shift_count = (stack_ptr - 1 - i) as usize;
                         if shift_count > 0 {
                             ptr::copy(kp_ptr.add(1), kp_ptr, shift_count);
                         }
-                        KEYPRESS_STACK_POINTER -= 1;
-                        KEYPRESS_STACK[KEYPRESS_STACK_POINTER as usize] = KeyPress::default();
+                        kbd.stack_ptr -= 1;
+                        *kbd.get_next_free() = KeyPress::default();
                         break;
                     }
                 }
             }
         }
     }
-
 
 }
