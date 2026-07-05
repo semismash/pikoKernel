@@ -19,6 +19,7 @@ type CharBuffer = [Char; BUFFER_LENGTH];
 pub struct InputBuffer {
     pub buffer: CharBuffer,
     pub idx: usize,
+    pub offset: usize,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone, Copy)]
@@ -29,6 +30,17 @@ pub enum InputAction {
     BackChar,
     Submit,
     Cancel,
+    MoveUp,
+    MoveDown,
+    MoveLeft,
+    MoveRight,
+}
+
+enum MoveDirection {
+    Up,
+    Down,
+    Left,
+    Right
 }
 
 pub enum InputError {
@@ -40,7 +52,8 @@ impl InputBuffer {
     pub const fn new() -> Self {
         Self {
             buffer: [Char::Null; BUFFER_LENGTH],
-            idx: 0,
+            idx: 0, // current position of buffer writer ptr
+            offset: 0,  // next free position in buffer
         }
     }
 
@@ -52,6 +65,10 @@ impl InputBuffer {
             InputAction::BackChar => { self.back_char(); },
             InputAction::Submit => { self.new_line(); },
             InputAction::Cancel => { self.clear_buffer(); },
+            InputAction::MoveUp => { self.move_idx(MoveDirection::Up); },
+            InputAction::MoveDown => { self.move_idx(MoveDirection::Down); },
+            InputAction::MoveLeft => { self.move_idx(MoveDirection::Left); },
+            InputAction::MoveRight => { self.move_idx(MoveDirection::Right); },
         }
         Ok(())
     }
@@ -67,16 +84,20 @@ impl InputBuffer {
             core::ptr::write_bytes(buf_ptr, 0x00, BUFFER_LENGTH);   //Char::Null = 0x00
         }
         self.idx = 0;
+        self.offset = 0;
     }
     
     pub fn write_char(&mut self, ch: Char) -> Result<(), InputError> {  
-        //currently, directly changes the character that idx points to
+        //currently, directly changes the character that offset points to
         //needs to be changed between insert mode and add mode, the latter will move the remaining text in the buffer up
-        if self.idx < BUFFER_LENGTH {
+        if self.offset < BUFFER_LENGTH {
             unsafe {
+                // CHANGE CHANGE CHANGE CHANGE CHANGE CHANGE CHANGE CHANGE CHANGE
                 let mut idx_ptr = &mut self.buffer[self.idx] as *mut Char;
+                core::ptr::copy(idx_ptr, idx_ptr.add(1), self.offset - self.idx);
                 core::ptr::write(idx_ptr, ch);
                 self.idx += 1;
+                self.offset += 1;
             }
             Ok(())
         } else {
@@ -92,6 +113,7 @@ impl InputBuffer {
                 core::ptr::copy(src_ptr, dest_ptr, BUFFER_LENGTH - self.idx);
                 self.buffer[BUFFER_LENGTH - 1] = Char::Null; // set final slot to null
                 self.idx -= 1;
+                self.offset -= 1;
             }
         }
     }
@@ -101,6 +123,7 @@ impl InputBuffer {
             unsafe {
                 let idx_ptr = &mut self.buffer[self.idx] as *mut Char;
                 core::ptr::copy(idx_ptr.add(1), idx_ptr, BUFFER_LENGTH - self.idx - 1);
+                self.offset -= 1;
             }
         }
     }
@@ -109,8 +132,33 @@ impl InputBuffer {
         self.write_char(Char::LineFeed)
     }
 
+    pub fn move_idx(&mut self, dir: MoveDirection) {
+        match dir {
+            MoveDirection::Left => {
+                if self.idx > 0 { self.idx -= 1; }
+            },
+            MoveDirection::Right => {
+                if self.idx < self.offset { self.idx += 1; }
+            },
+            MoveDirection::Up => {  // RECHECK LOGIC
+                if self.idx >= crate::drivers::display::BUFFER_WIDTH {
+                    self.idx -= crate::drivers::display::BUFFER_WIDTH;
+                } else {
+                    self.idx = 0;
+                }
+            },
+            MoveDirection::Down => {
+                if self.offset - self.idx >= crate::drivers::display::BUFFER_WIDTH {
+                    self.idx += crate::drivers::display::BUFFER_WIDTH;
+                } else {
+                    self.idx = self.offset;
+                }
+            }
+        }
+    }
+
     pub fn is_full(&self) -> bool {
-        (BUFFER_LENGTH - self.idx) - 1 <= 0
+        (BUFFER_LENGTH - self.offset) - 1 <= 0
     }
 
 }
@@ -286,6 +334,9 @@ pub enum KeyStroke {
     // shifted numrow (now handled by modifers)
     PutCExclamation, PutCAt, PutCHash, PutCDollar, PutCPercent,
     PutCCaret, PutCAmpersand, PutCAsterisk, PutCOpenParen, PutCCloseParen,
+
+    // arrow keys
+    ArrowUp, ArrowDown, ArrowLeft, ArrowRight,
 
     // other
     Space,
@@ -481,6 +532,12 @@ impl KeyStroke {
             KS::PutCGreaterThan => InputAction::AddChar(Char::GreaterThanSign),
             KS::PutCQuestion    => InputAction::AddChar(Char::QuestionMark),
 
+            // arrows
+            KS::ArrowUp => InputAction::MoveUp,
+            KS::ArrowDown => InputAction::MoveDown,
+            KS::ArrowLeft => InputAction::MoveLeft,
+            KS::ArrowRight => InputAction::MoveRight,
+
             // controls
             KS::Space     => InputAction::AddChar(Char::Space),
             KS::Backspace => InputAction::BackChar,
@@ -550,6 +607,12 @@ static KEYSTROKE_TABLE: [KeyStrokeEntry; KEYSTROKE_MAX_COUNT] = create_keystroke
     KS::PutCComma      => [KP::new(Key::Comma, false)],
     KS::PutCPeriod     => [KP::new(Key::Period, false)],
     KS::PutCFSlash     => [KP::new(Key::FSlash, false)],
+
+    //arrow
+    KS::ArrowUp     => [KP::new(Key::Kp8, true)],
+    KS::ArrowDown     => [KP::new(Key::Kp2, true)],
+    KS::ArrowLeft     => [KP::new(Key::Kp4, true)],
+    KS::ArrowRight     => [KP::new(Key::Kp6, true)],
 
     // other
     KS::Space     => [KP::new(Key::Space, false)],
