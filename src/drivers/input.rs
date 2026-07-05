@@ -119,7 +119,7 @@ impl InputBuffer {
     }
 
     pub fn del_char(&mut self) {
-        if (self.idx < BUFFER_LENGTH - 1) { 
+        if (self.idx != self.offset && self.idx < BUFFER_LENGTH - 1) { 
             unsafe {
                 let idx_ptr = &mut self.buffer[self.idx] as *mut Char;
                 core::ptr::copy(idx_ptr.add(1), idx_ptr, BUFFER_LENGTH - self.idx - 1);
@@ -140,18 +140,59 @@ impl InputBuffer {
             MoveDirection::Right => {
                 if self.idx < self.offset { self.idx += 1; }
             },
-            MoveDirection::Up => {  // RECHECK LOGIC
-                if self.idx >= crate::drivers::display::BUFFER_WIDTH {
-                    self.idx -= crate::drivers::display::BUFFER_WIDTH;
-                } else {
+            MoveDirection::Up => {
+                if self.idx == 0 { return; }
+                //calculate target offset relative to start of cur line
+                let mut cur_line_start = self.idx;
+                while cur_line_start > 0 && self.buffer[cur_line_start - 1] != Char::LineFeed {
+                    cur_line_start -= 1;
+                }
+                let target_col_offset = self.idx - cur_line_start;
+                if cur_line_start == 0 {    // snap to beginning if no line above
                     self.idx = 0;
+                    return;
+                }
+                //scan backwards to beginning of previous line
+                let mut prev_line_end = cur_line_start - 1; // sits exactly on the delimiter \n
+                let mut prev_line_start = prev_line_end;
+                while prev_line_start > 0 && self.buffer[prev_line_start - 1] != Char::LineFeed {
+                    prev_line_start -= 1;
+                }
+                let prev_line_len = prev_line_end - prev_line_start;
+                //jump to prev line line and clamp length if smaller
+                if target_col_offset <= prev_line_len {
+                    self.idx = prev_line_start + target_col_offset;
+                } else {
+                    self.idx = prev_line_end;
                 }
             },
             MoveDirection::Down => {
-                if self.offset - self.idx >= crate::drivers::display::BUFFER_WIDTH {
-                    self.idx += crate::drivers::display::BUFFER_WIDTH;
-                } else {
+                if self.idx >= self.offset { return; }
+                let mut cur_line_start = self.idx;
+                while cur_line_start > 0 && self.buffer[cur_line_start - 1] != Char::LineFeed {
+                    cur_line_start -= 1;
+                }
+                let target_col_offset = self.idx - cur_line_start;
+                //same thing as b4 but scan forwards
+                let mut cur_line_end = self.idx;
+                while cur_line_end < self.offset && self.buffer[cur_line_end] != Char::LineFeed {
+                    cur_line_end += 1;
+                }
+                //if nothing, jump to end
+                if cur_line_end >= self.offset {
                     self.idx = self.offset;
+                    return;
+                }
+                let next_line_start = cur_line_end + 1; // go 1 cell past deliminter
+                let mut next_line_end = next_line_start;
+                while next_line_end < self.offset && self.buffer[next_line_end] != Char::LineFeed {
+                    next_line_end += 1;
+                }
+                let next_line_len = next_line_end - next_line_start;
+                if target_col_offset <= next_line_len {
+                    self.idx = next_line_start + target_col_offset;
+                } else {
+                    self.idx = next_line_end;
                 }
             }
         }
@@ -541,7 +582,7 @@ impl KeyStroke {
             // controls
             KS::Space     => InputAction::AddChar(Char::Space),
             KS::Backspace => InputAction::BackChar,
-            KS::Delete    => InputAction::None,
+            KS::Delete    => InputAction::DelChar,
             KS::Enter     => InputAction::Submit,
             KS::Cancel    => InputAction::None,
 
@@ -617,10 +658,10 @@ static KEYSTROKE_TABLE: [KeyStrokeEntry; KEYSTROKE_MAX_COUNT] = create_keystroke
     // other
     KS::Space     => [KP::new(Key::Space, false)],
     KS::Backspace => [KP::new(Key::Bksp, false)],
-    KS::Delete    => [KP::new(Key::Tab, false)],
+    KS::Delete    => [KP::new(Key::KpPeriod, true)],
     KS::Enter     => [KP::new(Key::Enter, false)],
     KS::Cancel    => [KP::new(Key::Esc, false)],
 
     // debug
-    KS::PutCBigZ  => [KP::new(Key::Num4, false), KP::new(Key::Num5, false), KP::new(Key::Num6, false)],
+    //KS::PutCBigZ  => [KP::new(Key::Num4, false), KP::new(Key::Num5, false), KP::new(Key::Num6, false)],
 );

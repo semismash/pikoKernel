@@ -393,6 +393,12 @@ impl DisplayWriter {
                     if j + remaining_slots_in_row >= remaining_capacity {
                         break;  // halt immediately to prevent buffer overflow
                     }
+                    for k in 0..remaining_slots_in_row {
+                        core::ptr::write(
+                            base_ptr.add(frame_idx + j + k),
+                            ScreenCharacter { ascii_char: 0x20, attribute: 0x0F },
+                        );
+                    }
                     j += remaining_slots_in_row;
                     cur_col = 0;
                 } else {
