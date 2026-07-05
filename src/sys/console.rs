@@ -1,8 +1,10 @@
+use crate::arch::i686::kbd::Key::P;
 use crate::drivers::display;
 use crate::drivers::display::{DisplayWriter, BUFFER_WIDTH, BUFFER_HEIGHT};
 use crate::arch::i686::vga;
 use crate::sub::spin::SpinLock;
 use crate::sys::EchoMode::Immediate;
+use crate::sys::kernel::OS_CONSOLE;
 use core::fmt::Write;
 use core::ascii::Char;
 use crate::drivers::input;
@@ -16,7 +18,12 @@ pub(crate) static FRAME: display::FramePointer = display::FramePointer(
 pub(crate) static OS_BUFFER: SpinLock<DisplayWriter> = SpinLock::new(
     DisplayWriter::new(Some(vga::update_cursor)));
 pub(crate) static INPUT_BUFFER: SpinLock<InputBuffer> = SpinLock::new(InputBuffer::new());
+pub(crate) static TYPEMATIC: SpinLock<TypematicState> = SpinLock::new(TypematicState { cur_ticks: 0, is_repeating: false });
 
+const TYPEMATIC_CHECK_DELAY_MS: u32 = 400;
+const TYPEMATIC_SPAM_DELAY_MS: u32 = 40;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EchoMode {
     None,
     Immediate,
@@ -25,8 +32,51 @@ pub enum EchoMode {
     //Masked(Char)
 }
 
+pub struct TypematicState {
+    pub cur_ticks: u32,
+    pub is_repeating: bool,
+}
+
+impl TypematicState {
+    pub fn reset(&mut self) {
+        self.cur_ticks = 0;
+        self.is_repeating = false;
+    }
+}
+
+pub fn evaluate_typematic() {
+    let mut tpm_lock = TYPEMATIC.lock();
+    let console_lock = OS_CONSOLE.lock();
+
+    let cur_action = console_lock.cur_action;
+    if cur_action == InputAction::None {
+        tpm_lock.reset();
+        return;
+    }
+
+    tpm_lock.cur_ticks += 1;
+
+    if !tpm_lock.is_repeating {
+        if tpm_lock.cur_ticks >= TYPEMATIC_CHECK_DELAY_MS {
+            tpm_lock.cur_ticks = 0;
+            tpm_lock.is_repeating = true;
+            //lock locally in the spam cycle to prevent corruption
+            let mut input_buf = INPUT_BUFFER.lock();
+            let mut os_buf = OS_BUFFER.lock();
+            console_lock.execute_console_action(&mut *input_buf, &mut *os_buf);
+        }
+    } else {
+        if tpm_lock.cur_ticks >= TYPEMATIC_SPAM_DELAY_MS {
+            tpm_lock.cur_ticks = 0;
+            let mut input_buf = INPUT_BUFFER.lock();
+            let mut os_buf = OS_BUFFER.lock();
+            console_lock.execute_console_action(&mut *input_buf, &mut *os_buf);
+        }
+    }
+}
+
 pub struct Console {
-    cur_action: InputAction,
+    pub cur_action: InputAction,
     echo_mode: EchoMode,
 }
 
@@ -45,17 +95,27 @@ impl Console {
 
     pub fn update_input(&mut self, kbd: &Keyboard, keypress_stack: &mut KeypressStack) {
         let mut input_buf = INPUT_BUFFER.lock();
-        let mut os_buf = OS_BUFFER.lock();
-        unsafe { 
-            let cur_stack_size = keypress_stack.stack_ptr;
+        let mut os_buf = OS_BUFFER.lock();  
+        if (self.echo_mode == EchoMode::None) { return; }
+        let cur_stack_size = keypress_stack.stack_ptr;
+        self.cur_action = input::get_action(&keypress_stack.stack, cur_stack_size);
+        self.cur_action = input::apply_modifiers(self.cur_action, kbd);
+        if self.cur_action == InputAction::Submit && os_buf.row_pos >= BUFFER_HEIGHT - 1 {
+            self.cur_action = InputAction::None; 
+            return;
+        }
+        self.execute_console_action(&mut *input_buf, &mut *os_buf);
+    }
+
+    pub fn execute_console_action(
+        &self,
+        input_buf: &mut InputBuffer,
+        os_buf: &mut DisplayWriter,
+    ) {
+        unsafe {
             match self.echo_mode {
                 EchoMode::None => {},
                 EchoMode::Immediate => {
-                    self.cur_action = input::get_action(&keypress_stack.stack, cur_stack_size);
-                    self.cur_action = input::apply_modifiers(self.cur_action, kbd);
-                    if self.cur_action == InputAction::Submit && os_buf.row_pos >= BUFFER_HEIGHT - 1 {
-                        self.cur_action = InputAction::None;
-                    }
                     if !(matches!(self.cur_action, InputAction::AddChar(..)) 
                         || (self.cur_action == InputAction::Submit))
                         || !(os_buf.check_if_full() || input_buf.is_full())
@@ -66,11 +126,6 @@ impl Console {
                     }
                 },
                 EchoMode::OnEnter => {  
-                    self.cur_action = input::get_action(&keypress_stack.stack, cur_stack_size);
-                    self.cur_action = input::apply_modifiers(self.cur_action, kbd);
-                    if self.cur_action == InputAction::Submit && os_buf.row_pos >= BUFFER_HEIGHT - 1 {
-                        self.cur_action = InputAction::None;
-                    }
                     if !(matches!(self.cur_action, InputAction::AddChar(..)) || self.cur_action == InputAction::Submit)
                         || !(os_buf.check_if_full() || input_buf.is_full()) 
                     {
@@ -82,8 +137,6 @@ impl Console {
                     }
                 },
                 EchoMode::Silent => {
-                    self.cur_action = input::get_action(&keypress_stack.stack, cur_stack_size);
-                    self.cur_action = input::apply_modifiers(self.cur_action, kbd);
                     input_buf.execute_action(self.cur_action);
                 },
                 /*

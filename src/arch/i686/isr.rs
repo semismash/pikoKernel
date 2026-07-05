@@ -60,9 +60,8 @@ impl InterruptHandler {
                 options(nomem, nostack, preserves_flags)
             );
         }
-        //crate::sys::console::clear!();
-        //crate::sys::console::write_and_flush!("Tick: {}", crate::sys::time::SysTime::get_ticks());
         crate::sys::time::SysTime::tick();
+        crate::sys::console::evaluate_typematic();
     }
 
     #[unsafe(no_mangle)] pub extern "x86-interrupt" 

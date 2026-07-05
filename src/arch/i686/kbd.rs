@@ -1,6 +1,7 @@
 use core::sync::atomic::{AtomicU16, Ordering};
 use core::ptr;
 
+use crate::drivers::input::InputAction;
 use crate::sub::spin::{self, SpinLock, SpinLockGuard};
 use crate::sys::{Console, kernel};
 
@@ -164,7 +165,7 @@ impl Keyboard {
                 let is_release = (scancode & RELEASE_BYTE) != 0;
                 let new_scancode = scancode & !RELEASE_BYTE;    // release byte filtered out
                 let mut is_valid_keypress = true;
-
+                
                 if !is_release && kbd.stack_ptr > 0 {
                     let most_recent_keypress = kbd.get_top_key();
                     let keypress_data = most_recent_keypress.get_keypress_data();
@@ -189,6 +190,7 @@ impl Keyboard {
         kbd: &mut KeypressStack,
         new_scancode: u8, 
         is_release: bool) {
+        crate::sys::console::TYPEMATIC.lock().reset();
         unsafe {
             if self.update_modifier_state(new_scancode, is_release) {
                 return;
@@ -222,6 +224,7 @@ impl Keyboard {
                         break;
                     }
                 }
+                console.cur_action = InputAction::None; 
             }
         }
     }
