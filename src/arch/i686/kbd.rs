@@ -2,6 +2,7 @@ use core::sync::atomic::{AtomicU16, Ordering};
 use core::ptr;
 
 use crate::sub::spin::{self, SpinLock, SpinLockGuard};
+use crate::sys::{Console, kernel};
 
 const RELEASE_BYTE: u8 = 0x80;
 const EXTENDED_BYTE: u8 = 0xE0;
@@ -51,14 +52,20 @@ impl Key {
 }
 
 pub struct Keyboard {
-    capslk_on: bool,
-    numlk_on: bool,
-    scrllk_on: bool,
+    pub lshift: bool,
+    pub rshift: bool,
+    pub lctrl: bool,
+    pub rctrl: bool,
+    pub lalt: bool,
+    pub ralt: bool,
+    pub capslk_on: bool,
+    pub numlk_on: bool,
+    pub scrllk_on: bool,
 }
 
 pub struct KeypressStack {
-    stack: [KeyPress; Self::KEYPRESS_STACK_LENGTH as usize],
-    stack_ptr: u8,
+    pub stack: [KeyPress; Self::KEYPRESS_STACK_LENGTH as usize],
+    pub stack_ptr: u8,
 }
 
 #[derive(Debug)]
@@ -82,8 +89,6 @@ impl KeyPress {
     }
 
     fn get_keypress_data(&self) -> u16 { self.keypress_data.load(Ordering::Relaxed) }
-    //fn get_keycode(&self) -> u8 { (self.keypress_data.load(Ordering::Relaxed) & 0xFF) as u8 }
-    //fn get_metadata(&self) -> u8 { (self.keypress_data.load(Ordering::Relaxed) >> 8 & 0xFF) as u8 }
 }
 
 impl KeypressStack {
@@ -112,18 +117,46 @@ impl KeypressStack {
 
 impl Keyboard {
 
-    pub const fn new() -> Self {
-
+        pub const fn new() -> Self {    // maintain explicit modifier (subkect to change later)
         Self {
+            lshift: false,
+            rshift: false,
+            lctrl: false,
+            rctrl: false,
+            lalt: false,
+            ralt: false,
             capslk_on: false,
             numlk_on: false,
             scrllk_on: false,
         }
-
     }
 
-    pub fn try_update_keypress(&self, scancode: u8) {
+    pub fn is_shift(&self) -> bool {
+        self.lshift || self.rshift
+    }
+
+    pub fn is_uppercase(&self) -> bool {
+        self.is_shift() ^ self.capslk_on  // shift + caps = lowercase
+    }
+
+    fn update_modifier_state(&mut self, scancode: u8, is_release: bool) -> bool {
+        unsafe {
+            match scancode {
+                0x2A => { self.lshift    = !is_release; true },
+                0x36 => { self.rshift    = !is_release; true },
+                0x1D => { if IS_EXTENDED { self.rctrl = !is_release; } else { self.lctrl = !is_release; } true },
+                0x38 => { if IS_EXTENDED { self.ralt   = !is_release; } else { self.lalt  = !is_release; } true },
+                0x3A => { if !is_release { self.capslk_on = !self.capslk_on; } true },
+                0x45 => { if !is_release { self.numlk_on  = !self.numlk_on;  } true },
+                0x46 => { if !is_release { self.scrllk_on = !self.scrllk_on; } true },
+                _ => false,
+            }
+        }
+    }
+
+    pub fn try_update_keypress(&mut self, scancode: u8) {
         let mut kbd = KEYPRESS_STACK.lock();
+        let mut console = kernel::OS_CONSOLE.lock();
         unsafe {
             if scancode == EXTENDED_BYTE {  // IMPLEMENT caps, num and scroll lock
                 IS_EXTENDED = true;
@@ -143,15 +176,23 @@ impl Keyboard {
                 }
 
                 if is_valid_keypress {
-                    self.update_keypress(&mut *kbd, new_scancode, is_release);
+                    self.update_keypress(&mut *console, &mut *kbd, new_scancode, is_release);
                 }
                 IS_EXTENDED = false;
             }
-        }
+        };
     }
 
-    pub fn update_keypress(&self, kbd: &mut KeypressStack, new_scancode: u8, is_release: bool) {
+    pub fn update_keypress(
+        &mut self,
+        console: &mut Console,
+        kbd: &mut KeypressStack,
+        new_scancode: u8, 
+        is_release: bool) {
         unsafe {
+            if self.update_modifier_state(new_scancode, is_release) {
+                return;
+            }
             let stack_ptr = kbd.stack_ptr;
             let keypress = KeyPress { 
                 keypress_data: AtomicU16::new(new_scancode as u16 | (IS_EXTENDED as u16) << 8) 
@@ -163,8 +204,7 @@ impl Keyboard {
                     kbd.stack_ptr += 1;
                 }
                 //call_input_driver_func(self.capslk_on, self.numlk_on, self.scrllk_on);
-                let console_ptr = &raw mut crate::sys::kernel::OS_CONSOLE;
-                (*console_ptr).update_input();
+                console.update_input(self, kbd);
             } else {
                 for i in (0..stack_ptr).rev() {
                     let kp = &mut kbd.stack[i as usize];
@@ -172,7 +212,7 @@ impl Keyboard {
                     let kp_keycode = (kp_data & 0xFF) as u8;
                     let kp_extended = (kp_data >> 8 & 0x1) != 0;
                     if kp_keycode == new_scancode && kp_extended == IS_EXTENDED {
-                        let kp_ptr = kp as *mut Keypress;
+                        let kp_ptr = kp as *mut KeyPress;
                         let shift_count = (stack_ptr - 1 - i) as usize;
                         if shift_count > 0 {
                             ptr::copy(kp_ptr.add(1), kp_ptr, shift_count);

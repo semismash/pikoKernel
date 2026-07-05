@@ -1,3 +1,4 @@
+use core::arch;
 use crate::arch::i686;
 use crate::arch::i686::gdt::GDTPointer;
 use crate::drivers::BackgroundColor::Green;
@@ -5,15 +6,17 @@ use crate::drivers::display::ForegroundColor as FGColor;
 use crate::drivers::display::BackgroundColor as BGColor;
 use crate::drivers::display;
 use crate::drivers::display::*;
+use crate::sub::spin::SpinLock;
 use crate::sys;
 use crate::drivers::display::{DisplayWriter, BUFFER_WIDTH, BUFFER_HEIGHT};
 use crate::arch::i686::vga;
 use crate::drivers::display::ScreenCharacter;
 use crate::sys::time;
+use crate::sys::Console;
 
 use core::fmt::Write;
 
-pub static mut OS_CONSOLE: sys::console::Console = sys::console::Console::initialize();
+pub static OS_CONSOLE: SpinLock<Console> = SpinLock::new(Console::initialize());
 
 pub fn main() -> ! {
 
@@ -50,6 +53,7 @@ pub fn main() -> ! {
 
         sys::console::println!("OS BOOTED!");
         sys::console::println!("Red colored text", FGColor::Red);
+
         /*sys::console::print!("I'm a ", FGColor::Magenta);
         sys::console::print!("Rustacean", FGColor::Yellow);
         sys::console::println!(", what's up?", FGColor::Magenta);*/

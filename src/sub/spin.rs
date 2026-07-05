@@ -41,7 +41,7 @@ impl<T> Deref for SpinLockGuard<'_, T> {
 
 impl<T> DerefMut for SpinLockGuard<'_, T> {
     fn deref_mut(&mut self) -> &mut Self::Target {
-        unsafe { &mut *self.lock.data.get_mut() }
+        unsafe { &mut *self.lock.data.get() }
     }
 }
 

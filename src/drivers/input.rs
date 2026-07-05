@@ -1,6 +1,6 @@
 use core::ascii::Char;
 
-use crate::arch::i686::kbd::{self, Keyboard, Key, KEYPRESS_STACK_LENGTH};
+use crate::arch::i686::kbd::{self, Keyboard, Key, KeypressStack};
 use crate::arch::i686::kbd::KeyPress;
 use crate::drivers::input;
 use crate::drivers::input::InputAction::{AddChar, Cancel, DelChar, BackChar, Submit};
@@ -12,7 +12,7 @@ const KEYSTROKE_MAX_COUNT: usize = 256;
 const KEYSTROKE_CAPACITY: usize = 8;   //max 8 keystrokes per keystroke, implemented by software, practically will never reach this high
 
 //compile time check to make sure keystroke capacity does not exceed stack size
-const _: u8 = [0][((KEYSTROKE_MAX_COUNT <= kbd::KEYPRESS_STACK_LENGTH as usize) as usize)];
+const _: u8 = [0][((KEYSTROKE_MAX_COUNT <= KeypressStack::KEYPRESS_STACK_LENGTH as usize) as usize)];
 
 type CharBuffer = [Char; BUFFER_LENGTH];
 #[repr(C)]
@@ -142,14 +142,14 @@ impl KeyPressConfig {
 
 }
 
-pub fn get_action(keypress_stack: &[KeyPress; KEYPRESS_STACK_LENGTH as usize], active_stack_size: u8) -> InputAction {
+pub fn get_action(keypress_stack: &[KeyPress; KeypressStack::KEYPRESS_STACK_LENGTH as usize], active_stack_size: u8) -> InputAction {
     let mut bitmask: [u64; 4] = [0xFFFFFFFFFFFFFFFF; 4];  // 256 bits, one per keystroke entry, can be changed later
     let mut candidate: usize = 0;   
     let mut final_candidate: Option<usize> = None;
     let mut single_key_fallback_idx: Option<usize> = None; 
     // ^^^ optimization, if cell matches and the place after that is padded with no key, then that MUST be the candidate 
     // (NOTE: requires PROPER initialization of keybinds in the array to work properly)
-    for i in 0..KEYSTROKE_CAPACITY {    // scan each keypress row first, starting at key 1
+    for i in 0..KEYSTROKE_CAPACITY {
         candidate = 0;
         let mut candidate_count: usize = 0;      //number of potential candidates for keypress 
         for j in 0..KEYSTROKE_MAX_COUNT {   // go through each individual keypress and check if it matches
@@ -163,14 +163,13 @@ pub fn get_action(keypress_stack: &[KeyPress; KEYPRESS_STACK_LENGTH as usize], a
                     single_key_fallback_idx = Some(j);
                 }
             }
-
             // normal check
             if (bitmask[word] >> bit & 0x1) == 1 {
                 if cur_keypress.equals_key(&keypress_stack[i]) {
                     candidate = j;
                     candidate_count += 1;
                 } else {
-                    bitmask[word] &= !(1u64 << bit);  // turn bit j off if not valid
+                    bitmask[word] &= !(1u64 << bit);    // turn bit j off if not valid
                 }
             }
         }
@@ -192,16 +191,16 @@ pub fn get_action(keypress_stack: &[KeyPress; KEYPRESS_STACK_LENGTH as usize], a
         while i < KEYSTROKE_CAPACITY && (KEYSTROKE_TABLE[idx].1)[i].keypress_data != 0x0000 {   //check that its NOT none
             i += 1;
         }
-        if (i == (active_stack_size as usize)) {    // if i equals stack size, the correct keys are beingg pressed
+        if i == (active_stack_size as usize) {      // if i equals stack size, the correct keys are beingg pressed
             return (KEYSTROKE_TABLE[idx].0).match_key_stroke_to_action();
         }
     }
 
-    if let Some(idx) = single_key_fallback_idx {    // if nothing matches, default to the most recently pressed key
+    if let Some(idx) = single_key_fallback_idx {        // if nothing matches, default to the most recently pressed key
         return (KEYSTROKE_TABLE[idx].0).match_key_stroke_to_action();
     }
 
-    InputAction::None   // reached end/ambiguous, exit early with default action None
+    InputAction::None
 }
 
 const fn create_keystroke_table(inputs: [KeyStrokeMacroInputRow; KEYSTROKE_MAX_COUNT]) -> [KeyStrokeEntry; KEYSTROKE_MAX_COUNT] {
@@ -215,7 +214,7 @@ const fn create_keystroke_table(inputs: [KeyStrokeMacroInputRow; KEYSTROKE_MAX_C
     table
 }
 
-const fn pad_keypresses(src: &[KP]) -> [KP; KEYSTROKE_CAPACITY] {   //helper function
+const fn pad_keypresses(src: &[KP]) -> [KP; KEYSTROKE_CAPACITY] {   // helper function
     let mut dst = [KP::default(); KEYSTROKE_CAPACITY];
     let mut i = 0;
     while i < src.len() {
@@ -252,11 +251,11 @@ macro_rules! create_keystroke_table {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 #[repr(u8)]
 pub enum KeyStroke {
-    //list of keystrokes
-    
+    // list of kestrokes
+
     None,
     
-    // lowercase Characters
+    // lowercase characters
     PutCSmallA, PutCSmallB, PutCSmallC, PutCSmallD, PutCSmallE,
     PutCSmallF, PutCSmallG, PutCSmallH, PutCSmallI, PutCSmallJ,
     PutCSmallK, PutCSmallL, PutCSmallM, PutCSmallN, PutCSmallO,
@@ -264,7 +263,7 @@ pub enum KeyStroke {
     PutCSmallU, PutCSmallV, PutCSmallW, PutCSmallX, PutCSmallY,
     PutCSmallZ,
 
-    // UPPERCASE CHARACTERS
+    // uppercase characters (now handled by modifers)
     PutCBigA, PutCBigB, PutCBigC, PutCBigD, PutCBigE,
     PutCBigF, PutCBigG, PutCBigH, PutCBigI, PutCBigJ,
     PutCBigK, PutCBigL, PutCBigM, PutCBigN, PutCBigO,
@@ -280,11 +279,11 @@ pub enum KeyStroke {
     PutCMinus, PutCEqual, PutCOpSqBk, PutCClSqBk, PutCSmcln,
     PutCQuote, PutCBkTk, PutCBSlash, PutCComma, PutCPeriod, PutCFSlash,
 
-    // shifted punctuations
+    // shifted punctuations (now handled by modifers)
     PutCUnderscore, PutCPlus, PutCOpCuBk, PutCClCuBk, PutCColon,
     PutCDoubleQuote, PutCTilde, PutCPipe, PutCLessThan, PutCGreaterThan, PutCQuestion,
 
-    // shifted numrow
+    // shifted numrow (now handled by modifers)
     PutCExclamation, PutCAt, PutCHash, PutCDollar, PutCPercent,
     PutCCaret, PutCAmpersand, PutCAsterisk, PutCOpenParen, PutCCloseParen,
 
@@ -294,6 +293,76 @@ pub enum KeyStroke {
     Delete,
     Enter,
     Cancel,
+}
+
+// CURRENT FIX: SUBJECT TO CHANGE - explicitly handle case using modifiers
+pub fn apply_modifiers(action: InputAction, kbd: &Keyboard) -> InputAction {
+    match action {
+        InputAction::AddChar(ch) => InputAction::AddChar(shift_char(ch, kbd.is_uppercase())),
+        other => other,
+    }
+}
+
+fn shift_char(ch: Char, shift: bool) -> Char {
+    if !shift { return ch; }
+    match ch {
+
+        // lowercase to uppercase
+        Char::SmallA => Char::CapitalA,
+        Char::SmallB => Char::CapitalB,
+        Char::SmallC => Char::CapitalC,
+        Char::SmallD => Char::CapitalD,
+        Char::SmallE => Char::CapitalE,
+        Char::SmallF => Char::CapitalF,
+        Char::SmallG => Char::CapitalG,
+        Char::SmallH => Char::CapitalH,
+        Char::SmallI => Char::CapitalI,
+        Char::SmallJ => Char::CapitalJ,
+        Char::SmallK => Char::CapitalK,
+        Char::SmallL => Char::CapitalL,
+        Char::SmallM => Char::CapitalM,
+        Char::SmallN => Char::CapitalN,
+        Char::SmallO => Char::CapitalO,
+        Char::SmallP => Char::CapitalP,
+        Char::SmallQ => Char::CapitalQ,
+        Char::SmallR => Char::CapitalR,
+        Char::SmallS => Char::CapitalS,
+        Char::SmallT => Char::CapitalT,
+        Char::SmallU => Char::CapitalU,
+        Char::SmallV => Char::CapitalV,
+        Char::SmallW => Char::CapitalW,
+        Char::SmallX => Char::CapitalX,
+        Char::SmallY => Char::CapitalY,
+        Char::SmallZ => Char::CapitalZ,
+
+        // number row to symbols
+        Char::Digit1 => Char::ExclamationMark,
+        Char::Digit2 => Char::CommercialAt,
+        Char::Digit3 => Char::NumberSign,
+        Char::Digit4 => Char::DollarSign,
+        Char::Digit5 => Char::PercentSign,
+        Char::Digit6 => Char::CircumflexAccent,
+        Char::Digit7 => Char::Ampersand,
+        Char::Digit8 => Char::Asterisk,
+        Char::Digit9 => Char::LeftParenthesis,
+        Char::Digit0 => Char::RightParenthesis,
+
+        // punctuation to shifted punctuation
+        Char::HyphenMinus       => Char::LowLine,
+        Char::EqualsSign        => Char::PlusSign,
+        Char::LeftSquareBracket => Char::LeftCurlyBracket,
+        Char::RightSquareBracket=> Char::RightCurlyBracket,
+        Char::Semicolon         => Char::Colon,
+        Char::Apostrophe        => Char::QuotationMark,
+        Char::GraveAccent       => Char::Tilde,
+        Char::ReverseSolidus    => Char::VerticalLine,
+        Char::Comma             => Char::LessThanSign,
+        Char::FullStop          => Char::GreaterThanSign,
+        Char::Solidus           => Char::QuestionMark,
+
+        // otherwise don't change
+        other => other,
+    }
 }
 
 type KS = KeyStroke;
@@ -374,10 +443,10 @@ impl KeyStroke {
             KS::PutCNum9 => InputAction::AddChar(Char::Digit9),
             KS::PutCNum0 => InputAction::AddChar(Char::Digit0),
 
-            //shifted numbers
+            // shifted numbers
             KS::PutCExclamation => InputAction::AddChar(Char::ExclamationMark),
             KS::PutCAt          => InputAction::AddChar(Char::CommercialAt),
-            KS::PutCHash        => InputAction::AddChar(Char::NumberSign), // or Char::NumberSign
+            KS::PutCHash        => InputAction::AddChar(Char::NumberSign),
             KS::PutCDollar      => InputAction::AddChar(Char::DollarSign),
             KS::PutCPercent     => InputAction::AddChar(Char::PercentSign),
             KS::PutCCaret       => InputAction::AddChar(Char::CircumflexAccent),
@@ -386,8 +455,8 @@ impl KeyStroke {
             KS::PutCOpenParen   => InputAction::AddChar(Char::LeftParenthesis),
             KS::PutCCloseParen  => InputAction::AddChar(Char::RightParenthesis),
 
-            // base Punctuations
-            KS::PutCMinus      => InputAction::AddChar(Char::HyphenMinus), 
+            // base punctuations
+            KS::PutCMinus      => InputAction::AddChar(Char::HyphenMinus),
             KS::PutCEqual      => InputAction::AddChar(Char::EqualsSign),
             KS::PutCOpSqBk     => InputAction::AddChar(Char::LeftSquareBracket),
             KS::PutCClSqBk     => InputAction::AddChar(Char::RightSquareBracket),
@@ -399,34 +468,27 @@ impl KeyStroke {
             KS::PutCPeriod     => InputAction::AddChar(Char::FullStop),
             KS::PutCFSlash     => InputAction::AddChar(Char::Solidus),
 
-            // Shifted Punctuations
-            KS::PutCUnderscore  => InputAction::AddChar(Char::LowLine), // or Char::Underscore
+            // shifted punctuations
+            KS::PutCUnderscore  => InputAction::AddChar(Char::LowLine),
             KS::PutCPlus        => InputAction::AddChar(Char::PlusSign),
             KS::PutCOpCuBk      => InputAction::AddChar(Char::LeftCurlyBracket),
             KS::PutCClCuBk      => InputAction::AddChar(Char::RightCurlyBracket),
             KS::PutCColon       => InputAction::AddChar(Char::Colon),
             KS::PutCDoubleQuote => InputAction::AddChar(Char::QuotationMark),
             KS::PutCTilde       => InputAction::AddChar(Char::Tilde),
-            KS::PutCPipe        => InputAction::AddChar(Char::VerticalLine), // or Char::Pipe
+            KS::PutCPipe        => InputAction::AddChar(Char::VerticalLine),
             KS::PutCLessThan    => InputAction::AddChar(Char::LessThanSign),
             KS::PutCGreaterThan => InputAction::AddChar(Char::GreaterThanSign),
             KS::PutCQuestion    => InputAction::AddChar(Char::QuestionMark),
 
-            // Controls
-            /*
-            KS::Space     => InputAction::AddChar(Char::Space),
-            KS::Backspace => InputAction::BackChar,
-            KS::Delete    => InputAction::DelChar,
-            KS::Enter     => InputAction::Submit,
-            KS::Cancel    => InputAction::Cancel,
-            */
+            // controls
             KS::Space     => InputAction::AddChar(Char::Space),
             KS::Backspace => InputAction::BackChar,
             KS::Delete    => InputAction::None,
             KS::Enter     => InputAction::Submit,
             KS::Cancel    => InputAction::None,
 
-        _ => InputAction::None,
+            _ => InputAction::None,
         }
     }
 }
@@ -464,62 +526,6 @@ static KEYSTROKE_TABLE: [KeyStrokeEntry; KEYSTROKE_MAX_COUNT] = create_keystroke
     KS::PutCSmallY => [KP::new(Key::Y, false)],
     KS::PutCSmallZ => [KP::new(Key::Z, false)],
 
-    // uppercase
-    KS::PutCBigA => [KP::new(Key::LShift, false), KP::new(Key::A, false)],
-    KS::PutCBigB => [KP::new(Key::LShift, false), KP::new(Key::B, false)],
-    KS::PutCBigC => [KP::new(Key::LShift, false), KP::new(Key::C, false)],
-    KS::PutCBigD => [KP::new(Key::LShift, false), KP::new(Key::D, false)],
-    KS::PutCBigE => [KP::new(Key::LShift, false), KP::new(Key::E, false)],
-    KS::PutCBigF => [KP::new(Key::LShift, false), KP::new(Key::F, false)],
-    KS::PutCBigG => [KP::new(Key::LShift, false), KP::new(Key::G, false)],
-    KS::PutCBigH => [KP::new(Key::LShift, false), KP::new(Key::H, false)],
-    KS::PutCBigI => [KP::new(Key::LShift, false), KP::new(Key::I, false)],
-    KS::PutCBigJ => [KP::new(Key::LShift, false), KP::new(Key::J, false)],
-    KS::PutCBigK => [KP::new(Key::LShift, false), KP::new(Key::K, false)],
-    KS::PutCBigL => [KP::new(Key::LShift, false), KP::new(Key::L, false)],
-    KS::PutCBigM => [KP::new(Key::LShift, false), KP::new(Key::M, false)],
-    KS::PutCBigN => [KP::new(Key::LShift, false), KP::new(Key::N, false)],
-    KS::PutCBigO => [KP::new(Key::LShift, false), KP::new(Key::O, false)],
-    KS::PutCBigP => [KP::new(Key::LShift, false), KP::new(Key::P, false)],
-    KS::PutCBigQ => [KP::new(Key::LShift, false), KP::new(Key::Q, false)],
-    KS::PutCBigR => [KP::new(Key::LShift, false), KP::new(Key::R, false)],
-    KS::PutCBigS => [KP::new(Key::LShift, false), KP::new(Key::S, false)],
-    KS::PutCBigT => [KP::new(Key::LShift, false), KP::new(Key::T, false)],
-    KS::PutCBigU => [KP::new(Key::LShift, false), KP::new(Key::U, false)],
-    KS::PutCBigV => [KP::new(Key::LShift, false), KP::new(Key::V, false)],
-    KS::PutCBigW => [KP::new(Key::LShift, false), KP::new(Key::W, false)],
-    KS::PutCBigX => [KP::new(Key::LShift, false), KP::new(Key::X, false)],
-    KS::PutCBigY => [KP::new(Key::LShift, false), KP::new(Key::Y, false)],
-    KS::PutCBigZ => [KP::new(Key::LShift, false), KP::new(Key::Z, false)],
-
-    // uppercase shift
-    /*KS::PutCBigA => [KP::new(Key::RShift, false), KP::new(Key::A, false)],
-    KS::PutCBigB => [KP::new(Key::RShift, false), KP::new(Key::B, false)],
-    KS::PutCBigC => [KP::new(Key::RShift, false), KP::new(Key::C, false)],
-    KS::PutCBigD => [KP::new(Key::RShift, false), KP::new(Key::D, false)],
-    KS::PutCBigE => [KP::new(Key::RShift, false), KP::new(Key::E, false)],
-    KS::PutCBigF => [KP::new(Key::RShift, false), KP::new(Key::F, false)],
-    KS::PutCBigG => [KP::new(Key::RShift, false), KP::new(Key::G, false)],
-    KS::PutCBigH => [KP::new(Key::RShift, false), KP::new(Key::H, false)],
-    KS::PutCBigI => [KP::new(Key::RShift, false), KP::new(Key::I, false)],
-    KS::PutCBigJ => [KP::new(Key::RShift, false), KP::new(Key::J, false)],
-    KS::PutCBigK => [KP::new(Key::RShift, false), KP::new(Key::K, false)],
-    KS::PutCBigL => [KP::new(Key::RShift, false), KP::new(Key::L, false)],
-    KS::PutCBigM => [KP::new(Key::RShift, false), KP::new(Key::M, false)],
-    KS::PutCBigN => [KP::new(Key::RShift, false), KP::new(Key::N, false)],
-    KS::PutCBigO => [KP::new(Key::RShift, false), KP::new(Key::O, false)],
-    KS::PutCBigP => [KP::new(Key::RShift, false), KP::new(Key::P, false)],
-    KS::PutCBigQ => [KP::new(Key::RShift, false), KP::new(Key::Q, false)],
-    KS::PutCBigR => [KP::new(Key::RShift, false), KP::new(Key::R, false)],
-    KS::PutCBigS => [KP::new(Key::RShift, false), KP::new(Key::S, false)],
-    KS::PutCBigT => [KP::new(Key::RShift, false), KP::new(Key::T, false)],
-    KS::PutCBigU => [KP::new(Key::RShift, false), KP::new(Key::U, false)],
-    KS::PutCBigV => [KP::new(Key::RShift, false), KP::new(Key::V, false)],
-    KS::PutCBigW => [KP::new(Key::RShift, false), KP::new(Key::W, false)],
-    KS::PutCBigX => [KP::new(Key::RShift, false), KP::new(Key::X, false)],
-    KS::PutCBigY => [KP::new(Key::RShift, false), KP::new(Key::Y, false)],
-    KS::PutCBigZ => [KP::new(Key::RShift, false), KP::new(Key::Z, false)],*/
-
     // numbers
     KS::PutCNum1 => [KP::new(Key::Num1, false)],
     KS::PutCNum2 => [KP::new(Key::Num2, false)],
@@ -532,32 +538,7 @@ static KEYSTROKE_TABLE: [KeyStrokeEntry; KEYSTROKE_MAX_COUNT] = create_keystroke
     KS::PutCNum9 => [KP::new(Key::Num9, false)],
     KS::PutCNum0 => [KP::new(Key::Num0, false)],
 
-    // shifted numbers lsfhit
-    KS::PutCExclamation => [KP::new(Key::LShift, false), KP::new(Key::Num1, false)],
-    KS::PutCAt          => [KP::new(Key::LShift, false), KP::new(Key::Num2, false)],
-    KS::PutCHash        => [KP::new(Key::LShift, false), KP::new(Key::Num3, false)],
-    KS::PutCDollar      => [KP::new(Key::LShift, false), KP::new(Key::Num4, false)],
-    KS::PutCPercent     => [KP::new(Key::LShift, false), KP::new(Key::Num5, false)],
-    KS::PutCCaret       => [KP::new(Key::LShift, false), KP::new(Key::Num6, false)],
-    KS::PutCAmpersand   => [KP::new(Key::LShift, false), KP::new(Key::Num7, false)],
-    KS::PutCAsterisk    => [KP::new(Key::LShift, false), KP::new(Key::Num8, false)],
-    KS::PutCOpenParen   => [KP::new(Key::LShift, false), KP::new(Key::Num9, false)],
-    KS::PutCCloseParen  => [KP::new(Key::LShift, false), KP::new(Key::Num0, false)],
-
-    // shifted numbers rshift
-    /*KS::PutCExclamation => [KP::new(Key::RShift, false), KP::new(Key::Num1, false)],
-    KS::PutCAt          => [KP::new(Key::RShift, false), KP::new(Key::Num2, false)],
-    KS::PutCHash        => [KP::new(Key::RShift, false), KP::new(Key::Num3, false)],
-    KS::PutCDollar      => [KP::new(Key::RShift, false), KP::new(Key::Num4, false)],
-    KS::PutCPercent     => [KP::new(Key::RShift, false), KP::new(Key::Num5, false)],
-    KS::PutCCaret       => [KP::new(Key::RShift, false), KP::new(Key::Num6, false)],
-    KS::PutCAmpersand   => [KP::new(Key::RShift, false), KP::new(Key::Num7, false)],
-    KS::PutCAsterisk    => [KP::new(Key::RShift, false), KP::new(Key::Num8, false)],
-    KS::PutCOpenParen   => [KP::new(Key::RShift, false), KP::new(Key::Num9, false)],
-    KS::PutCCloseParen  => [KP::new(Key::RShift, false), KP::new(Key::Num0, false)],*/
-
-
-    // base punctions
+    // base punctuations
     KS::PutCMinus      => [KP::new(Key::Minus, false)],
     KS::PutCEqual      => [KP::new(Key::Equal, false)],
     KS::PutCOpSqBk     => [KP::new(Key::OpSqBk, false)],
@@ -570,32 +551,6 @@ static KEYSTROKE_TABLE: [KeyStrokeEntry; KEYSTROKE_MAX_COUNT] = create_keystroke
     KS::PutCPeriod     => [KP::new(Key::Period, false)],
     KS::PutCFSlash     => [KP::new(Key::FSlash, false)],
 
-    // lshift punctionaion
-    KS::PutCUnderscore  => [KP::new(Key::LShift, false), KP::new(Key::Minus, false)],
-    KS::PutCPlus        => [KP::new(Key::LShift, false), KP::new(Key::Equal, false)],
-    KS::PutCOpCuBk      => [KP::new(Key::LShift, false), KP::new(Key::OpSqBk, false)],
-    KS::PutCClCuBk      => [KP::new(Key::LShift, false), KP::new(Key::ClSqBk, false)],
-    KS::PutCColon       => [KP::new(Key::LShift, false), KP::new(Key::Smcln, false)],
-    KS::PutCDoubleQuote => [KP::new(Key::LShift, false), KP::new(Key::Quote, false)],
-    KS::PutCTilde       => [KP::new(Key::LShift, false), KP::new(Key::BkTk, false)],
-    KS::PutCPipe        => [KP::new(Key::LShift, false), KP::new(Key::BSlash, false)],
-    KS::PutCLessThan    => [KP::new(Key::LShift, false), KP::new(Key::Comma, false)],
-    KS::PutCGreaterThan => [KP::new(Key::LShift, false), KP::new(Key::Period, false)],
-    KS::PutCQuestion    => [KP::new(Key::LShift, false), KP::new(Key::FSlash, false)],
-
-    // rshift punction
-    /*KS::PutCUnderscore  => [KP::new(Key::RShift, false), KP::new(Key::Minus, false)],
-    KS::PutCPlus        => [KP::new(Key::RShift, false), KP::new(Key::Equal, false)],
-    KS::PutCOpCuBk      => [KP::new(Key::RShift, false), KP::new(Key::OpSqBk, false)],
-    KS::PutCClCuBk      => [KP::new(Key::RShift, false), KP::new(Key::ClSqBk, false)],
-    KS::PutCColon       => [KP::new(Key::RShift, false), KP::new(Key::Smcln, false)],
-    KS::PutCDoubleQuote => [KP::new(Key::RShift, false), KP::new(Key::Quote, false)],
-    KS::PutCTilde       => [KP::new(Key::RShift, false), KP::new(Key::BkTk, false)],
-    KS::PutCPipe        => [KP::new(Key::RShift, false), KP::new(Key::BSlash, false)],
-    KS::PutCLessThan    => [KP::new(Key::RShift, false), KP::new(Key::Comma, false)],
-    KS::PutCGreaterThan => [KP::new(Key::RShift, false), KP::new(Key::Period, false)],
-    KS::PutCQuestion    => [KP::new(Key::RShift, false), KP::new(Key::FSlash, false)],*/
-
     // other
     KS::Space     => [KP::new(Key::Space, false)],
     KS::Backspace => [KP::new(Key::Bksp, false)],
@@ -604,5 +559,5 @@ static KEYSTROKE_TABLE: [KeyStrokeEntry; KEYSTROKE_MAX_COUNT] = create_keystroke
     KS::Cancel    => [KP::new(Key::Esc, false)],
 
     // debug
-    KS::PutCBigZ  => [KP::new(Key::Num4, false), KP::new(Key::Num5, false), KP::new(Key::Num6, false)], //debuggun purpose
+    KS::PutCBigZ  => [KP::new(Key::Num4, false), KP::new(Key::Num5, false), KP::new(Key::Num6, false)],
 );

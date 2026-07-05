@@ -145,7 +145,6 @@ impl IDT {
                 base: &raw const KERNEL_IDT as *const IDTEntry as u32,
             };
             arch::asm!("lidt [{ptr}]", ptr = in(reg) &raw const IDT_DESCRIPTOR, options(nostack, preserves_flags));
-            //kbd::Keyboard::initialize();
             arch::asm!("sti", options(nostack, preserves_flags));
         }
     }
