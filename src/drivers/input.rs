@@ -6,7 +6,7 @@ use crate::drivers::input;
 use crate::drivers::input::InputAction::{AddChar, Cancel, DelChar, BackChar, Submit};
 use core::sync::atomic::Ordering;
 
-pub const BUFFER_LENGTH: usize = 1000;
+pub const BUFFER_LENGTH: usize = 800;
 
 const KEYSTROKE_MAX_COUNT: usize = 256;
 const KEYSTROKE_CAPACITY: usize = 8;   //max 8 keystrokes per keystroke, implemented by software, practically will never reach this high

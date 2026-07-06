@@ -9,7 +9,7 @@ use crate::drivers::input::InputBuffer;
 
 pub const BUFFER_WIDTH: usize = 80;
 pub const BUFFER_HEIGHT: usize = 25;
-const BUFFER_CAPACITY: usize = BUFFER_WIDTH * BUFFER_HEIGHT;
+pub const BUFFER_CAPACITY: usize = BUFFER_WIDTH * BUFFER_HEIGHT;
 
 type Buffer = [[ScreenCharacter; BUFFER_WIDTH]; BUFFER_HEIGHT];
 type FrameBuffer = [[u16; BUFFER_WIDTH]; BUFFER_HEIGHT];
@@ -21,8 +21,6 @@ unsafe impl Sync for FramePointer {}
 #[repr(C)]
 pub struct DisplayWriter {
     buffer: Buffer,
-    pub row_pos: usize,
-    pub col_pos: usize,
     pub offset: usize,
     input_frame: usize,
     cursor_idx: usize,
@@ -112,8 +110,6 @@ impl DisplayWriter {
     pub const fn new(on_cursor_update: Option<fn(usize, usize)>) -> Self {
         Self {
             buffer: [[ScreenCharacter { ascii_char: 0x20, attribute: 0x0F, }; BUFFER_WIDTH]; BUFFER_HEIGHT],
-            row_pos: 0,
-            col_pos: 0,
             offset: 0,
             input_frame: 0,
             cursor_idx: 0,
@@ -126,25 +122,17 @@ impl DisplayWriter {
         if self.offset < BUFFER_CAPACITY {
             unsafe {
                 if char.ascii_char == 0x0A { /* \n hex is 0x0A */
-                    self.row_pos += 1;
-                    self.col_pos = 0;
-                    self.offset = self.get_offset();
+                    self.offset = (Self::get_row(self.offset) + 1) * BUFFER_WIDTH;
                     self.input_frame = self.offset;
                 } else {
-                    if self.col_pos >= BUFFER_WIDTH {
-                        self.row_pos += 1;
-                        self.col_pos = 0;
-                        self.offset = self.get_offset();
-                        self.input_frame = self.offset;
-                    }
-                    let char_ptr = self.buffer
-                        .get_unchecked_mut(self.row_pos)
-                        .get_unchecked_mut(self.col_pos)
-                        as *mut ScreenCharacter;
-                    core::ptr::write(char_ptr, char);
-                    self.col_pos += 1;
+                    let col_pos = Self::get_col(self.offset);
+                    let char_ptr = self.buffer.as_mut_ptr() as *mut ScreenCharacter;
+                    core::ptr::write(char_ptr.add(self.offset), char);
                     self.offset += 1;
                     self.input_frame += 1;
+                    if Self::get_col(self.offset) == 0 {
+                        self.input_frame = self.offset;
+                    }
                 }
                 self.cursor_idx = self.offset;
                 Ok(())
@@ -215,7 +203,8 @@ impl DisplayWriter {
 
     pub fn clear(&mut self) {
         unsafe {
-            for i in 0..BUFFER_HEIGHT {
+            //change here
+            /*for i in 0..BUFFER_HEIGHT {
                 for j in 0..BUFFER_WIDTH {
                     let buf_ptr = self.buffer
                         .get_unchecked_mut(i)
@@ -228,23 +217,28 @@ impl DisplayWriter {
                         }
                     );
                 }
+            }*/
+            let buf_ptr = self.buffer.as_mut_ptr() as *mut ScreenCharacter;
+            for i in 0..BUFFER_CAPACITY {
+                core::ptr::write(
+                buf_ptr.add(i),
+                ScreenCharacter { 
+                        ascii_char: 0x20,
+                        attribute: 0x0F,
+                    }
+                )
             }
         }
-        self.row_pos = 0;
-        self.col_pos = 0;
         self.offset = 0;
         self.cursor_idx = 0;
         self.input_frame = self.offset;
     }
 
-    fn get_offset(&self) -> usize {
-        (self.row_pos * BUFFER_WIDTH) + self.col_pos
-    }
-
-    fn update_row_and_col(&mut self) {
-        self.row_pos = self.offset / BUFFER_WIDTH;
-        self.col_pos = self.offset % BUFFER_WIDTH;
-    }
+    //helper
+    pub fn get_offset(&self) -> usize { self.offset }
+    pub fn get_row(idx: usize) -> usize { idx / BUFFER_WIDTH }
+    pub fn get_col(idx: usize) -> usize { idx % BUFFER_WIDTH }
+    pub fn get_input_frame(&self) -> usize { self.input_frame }
 
 }
 
@@ -380,9 +374,12 @@ impl DisplayWriter {
             let mut i = 0;  //input
             let mut j = 0;  //display
             let mut cur_col = self.input_frame % BUFFER_WIDTH;
-            let mut cursor_j: Option<usize> = None;  // none means not yet found
+            let mut cursor_j: Option<usize> = None;   // none means not yet found
+            let mut real_end_j: Option<usize> = None;
+
             while i < flush_amt {
                 if i == input_buf.idx { cursor_j = Some(j); }
+                if i == input_buf.offset { real_end_j = Some(j); }
 
                 let fit = remaining_capacity - j;
                 if flush_amt - i > fit { flush_amt = fit + i; }
@@ -391,7 +388,7 @@ impl DisplayWriter {
                 if cur_ch == Char::LineFeed {
                     let remaining_slots_in_row = BUFFER_WIDTH - cur_col;
                     if j + remaining_slots_in_row >= remaining_capacity {
-                        break;  // halt immediately to prevent buffer overflow
+                        break;    // halt immediately to prevent buffer overflow
                     }
                     for k in 0..remaining_slots_in_row {
                         core::ptr::write(
@@ -416,10 +413,14 @@ impl DisplayWriter {
                 i += 1;
             }
             // if idx == offset, it means the cursor check never fired inside the loop, so default to end
-            self.cursor_idx = frame_idx + cursor_j.unwrap_or(j);
-            self.offset = frame_idx + j;
+            let real_end_j = real_end_j.unwrap_or(j);
+            self.cursor_idx = frame_idx + cursor_j.unwrap_or(real_end_j);
+            if i < input_buf.offset {
+                self.offset = MAX_SAFE_CAPACITY;
+            } else {
+                self.offset = frame_idx + real_end_j;
+            }
         }
-        self.update_row_and_col();
         Ok(())
     } else {
         Err(VGAError::CopyFromInputError)

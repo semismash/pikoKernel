@@ -1,5 +1,5 @@
 use crate::arch::i686::kbd::Key::P;
-use crate::drivers::display;
+use crate::drivers::{BUFFER_CAPACITY, display};
 use crate::drivers::display::{DisplayWriter, BUFFER_WIDTH, BUFFER_HEIGHT};
 use crate::arch::i686::vga;
 use crate::sub::spin::SpinLock;
@@ -100,7 +100,7 @@ impl Console {
         let cur_stack_size = keypress_stack.stack_ptr;
         self.cur_action = input::get_action(&keypress_stack.stack, cur_stack_size);
         self.cur_action = input::apply_modifiers(self.cur_action, kbd);
-        if self.cur_action == InputAction::Submit && os_buf.row_pos >= BUFFER_HEIGHT - 1 {
+        if self.cur_action == InputAction::Submit && DisplayWriter::get_row(os_buf.get_offset()) >= BUFFER_HEIGHT - 1 {
             self.cur_action = InputAction::None; 
             return;
         }
@@ -116,8 +116,7 @@ impl Console {
             match self.echo_mode {
                 EchoMode::None => {},
                 EchoMode::Immediate => {
-                    if !(matches!(self.cur_action, InputAction::AddChar(..)) 
-                        || (self.cur_action == InputAction::Submit))
+                    if !(matches!(self.cur_action, InputAction::AddChar(..)) || (self.cur_action == InputAction::Submit))
                         || !(os_buf.check_if_full() || input_buf.is_full())
                     {    
                         input_buf.execute_action(self.cur_action); 
