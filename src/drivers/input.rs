@@ -34,6 +34,10 @@ pub enum InputAction {
     MoveDown,
     MoveLeft,
     MoveRight,
+    ScrollUp,
+    ScrollDown,
+    ScrollLeft,
+    ScrollRight,
 }
 
 enum MoveDirection {
@@ -69,7 +73,8 @@ impl InputBuffer {
             InputAction::MoveDown => { self.move_idx(MoveDirection::Down); },
             InputAction::MoveLeft => { self.move_idx(MoveDirection::Left); },
             InputAction::MoveRight => { self.move_idx(MoveDirection::Right); },
-        }
+            _ => { }
+        };
         Ok(())
     }
 
@@ -88,11 +93,8 @@ impl InputBuffer {
     }
     
     pub fn write_char(&mut self, ch: Char) -> Result<(), InputError> {  
-        //currently, directly changes the character that offset points to
-        //needs to be changed between insert mode and add mode, the latter will move the remaining text in the buffer up
         if self.offset < BUFFER_LENGTH {
             unsafe {
-                // CHANGE CHANGE CHANGE CHANGE CHANGE CHANGE CHANGE CHANGE CHANGE
                 let mut idx_ptr = &mut self.buffer[self.idx] as *mut Char;
                 core::ptr::copy(idx_ptr, idx_ptr.add(1), self.offset - self.idx);
                 core::ptr::write(idx_ptr, ch);
@@ -104,6 +106,8 @@ impl InputBuffer {
             Err(InputError::WriteError)
         }
     }
+
+    //pub fn insert_char(&mut self, ch: Char) { }
 
     pub fn back_char(&mut self) {
         if (self.idx > 0) {
@@ -377,6 +381,7 @@ pub enum KeyStroke {
 
     // arrow keys
     ArrowUp, ArrowDown, ArrowLeft, ArrowRight,
+    ScrollUp, ScrollDown, ScrollLeft, ScrollRight,
 
     // other
     Space,
@@ -573,10 +578,14 @@ impl KeyStroke {
             KS::PutCQuestion    => InputAction::AddChar(Char::QuestionMark),
 
             // arrows
-            KS::ArrowUp => InputAction::MoveUp,
-            KS::ArrowDown => InputAction::MoveDown,
-            KS::ArrowLeft => InputAction::MoveLeft,
-            KS::ArrowRight => InputAction::MoveRight,
+            KS::ArrowUp         => InputAction::MoveUp,
+            KS::ArrowDown       => InputAction::MoveDown,
+            KS::ArrowLeft       => InputAction::MoveLeft,
+            KS::ArrowRight      => InputAction::MoveRight,
+            KS::ScrollUp        => InputAction::ScrollUp,
+            KS::ScrollDown      => InputAction::ScrollDown,
+            KS::ScrollLeft      => InputAction::ScrollLeft,
+            KS::ScrollRight     => InputAction::ScrollRight,
 
             // controls
             KS::Space     => InputAction::AddChar(Char::Space),
@@ -649,10 +658,16 @@ static KEYSTROKE_TABLE: [KeyStrokeEntry; KEYSTROKE_MAX_COUNT] = create_keystroke
     KS::PutCFSlash     => [KP::new(Key::FSlash, false)],
 
     //arrow
-    KS::ArrowUp     => [KP::new(Key::Kp8, true)],
-    KS::ArrowDown     => [KP::new(Key::Kp2, true)],
-    KS::ArrowLeft     => [KP::new(Key::Kp4, true)],
+    KS::ArrowUp        => [KP::new(Key::Kp8, true)],
+    KS::ArrowDown      => [KP::new(Key::Kp2, true)],
+    KS::ArrowLeft      => [KP::new(Key::Kp4, true)],
     KS::ArrowRight     => [KP::new(Key::Kp6, true)],
+
+    //force scroll
+    KS::ScrollUp       => [KP::new(Key::LCtrl, false), KP::new(Key::Kp8, true)],
+    KS::ScrollDown     => [KP::new(Key::LCtrl, false), KP::new(Key::Kp2, true)],
+    KS::ScrollLeft     => [KP::new(Key::LCtrl, false), KP::new(Key::Kp4, true)],
+    KS::ScrollRight    => [KP::new(Key::LCtrl, false), KP::new(Key::Kp6, true)],
 
     // other
     KS::Space     => [KP::new(Key::Space, false)],

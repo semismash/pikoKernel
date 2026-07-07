@@ -14,6 +14,7 @@ use crate::arch::i686::vga;
 use crate::drivers::display::ScreenCharacter;
 use crate::sys::time;
 use crate::sys::Console;
+use crate::drivers::display::{CURSOR_START, CURSOR_END};
 
 use core::fmt::Write;
 
@@ -36,7 +37,7 @@ pub fn main() -> ! {
         i686::pit::PIT::initialize();
 
         //enable text and cursor
-        i686::vga::enable_cursor(14, 15);
+        i686::vga::enable_cursor(CURSOR_START, CURSOR_END);
 
         sys::console::println!("OS BOOT!");
 

@@ -1,7 +1,7 @@
 use crate::arch::i686::kbd::Key::P;
 use crate::drivers::{BUFFER_CAPACITY, display};
 use crate::drivers::display::{DisplayWriter, BUFFER_WIDTH, BUFFER_HEIGHT};
-use crate::arch::i686::vga;
+use crate::arch::i686::vga::{self, disable_cursor};
 use crate::sub::spin::SpinLock;
 use crate::sys::EchoMode::Immediate;
 use crate::sys::kernel::OS_CONSOLE;
@@ -16,16 +16,21 @@ pub(crate) static FRAME: display::FramePointer = display::FramePointer(
 );
 
 pub(crate) static OS_BUFFER: SpinLock<DisplayWriter> = SpinLock::new(
-    DisplayWriter::new(Some(vga::update_cursor)));
+    DisplayWriter::new(
+        Some(vga::enable_cursor), 
+        Some(vga::disable_cursor), 
+        Some(vga::update_cursor)
+    ));
 pub(crate) static INPUT_BUFFER: SpinLock<InputBuffer> = SpinLock::new(InputBuffer::new());
 pub(crate) static TYPEMATIC: SpinLock<TypematicState> = SpinLock::new(TypematicState { cur_ticks: 0, is_repeating: false });
 
 const TYPEMATIC_CHECK_DELAY_MS: u32 = 400;
 const TYPEMATIC_SPAM_DELAY_MS: u32 = 40;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EchoMode {
     None,
+    #[default] OnlyScroll,
     Immediate,
     OnEnter,
     Silent,
@@ -115,6 +120,16 @@ impl Console {
         unsafe {
             match self.echo_mode {
                 EchoMode::None => {},
+                EchoMode::OnlyScroll => {
+                    match self.cur_action {
+                        InputAction::ScrollUp => { os_buf.scroll(display::ScrollDirection::Up); }
+                        InputAction::ScrollDown => { os_buf.scroll(display::ScrollDirection::Down); }
+                        InputAction::ScrollLeft => { os_buf.scroll(display::ScrollDirection::Left); }
+                        InputAction::ScrollRight => { os_buf.scroll(display::ScrollDirection::Right); }
+                        _ => { return; }
+                    }
+                    os_buf.flush_sync(FRAME);
+                }
                 EchoMode::Immediate => {
                     if !(matches!(self.cur_action, InputAction::AddChar(..)) || (self.cur_action == InputAction::Submit))
                         || !(os_buf.check_if_full() || input_buf.is_full())
