@@ -582,6 +582,7 @@ impl KeyStroke {
             KS::ArrowDown       => InputAction::MoveDown,
             KS::ArrowLeft       => InputAction::MoveLeft,
             KS::ArrowRight      => InputAction::MoveRight,
+
             KS::ScrollUp        => InputAction::ScrollUp,
             KS::ScrollDown      => InputAction::ScrollDown,
             KS::ScrollLeft      => InputAction::ScrollLeft,
@@ -593,6 +594,12 @@ impl KeyStroke {
             KS::Delete    => InputAction::DelChar,
             KS::Enter     => InputAction::Submit,
             KS::Cancel    => InputAction::None,
+
+            //debug
+            // KS::ScrollUp        => InputAction::AddChar(Char::CapitalW),
+            // KS::ScrollDown      => InputAction::AddChar(Char::CapitalS),
+            // KS::ScrollLeft      => InputAction::AddChar(Char::CapitalA),
+            // KS::ScrollRight     => InputAction::AddChar(Char::CapitalD),
 
             _ => InputAction::None,
         }
@@ -664,7 +671,8 @@ static KEYSTROKE_TABLE: [KeyStrokeEntry; KEYSTROKE_MAX_COUNT] = create_keystroke
     KS::ArrowRight     => [KP::new(Key::Kp6, true)],
 
     //force scroll
-    KS::ScrollUp       => [KP::new(Key::LCtrl, false), KP::new(Key::Kp8, true)],
+    //KS::ScrollUp      => [KP::new(Key::Tab, true)], // debugging
+    KS::ScrollUp      => [KP::new(Key::LCtrl, false), KP::new(Key::Kp8, true)],
     KS::ScrollDown     => [KP::new(Key::LCtrl, false), KP::new(Key::Kp2, true)],
     KS::ScrollLeft     => [KP::new(Key::LCtrl, false), KP::new(Key::Kp4, true)],
     KS::ScrollRight    => [KP::new(Key::LCtrl, false), KP::new(Key::Kp6, true)],
@@ -677,5 +685,6 @@ static KEYSTROKE_TABLE: [KeyStrokeEntry; KEYSTROKE_MAX_COUNT] = create_keystroke
     KS::Cancel    => [KP::new(Key::Esc, false)],
 
     // debug
-    //KS::PutCBigZ  => [KP::new(Key::Num4, false), KP::new(Key::Num5, false), KP::new(Key::Num6, false)],
+    KS::PutCBigZ  => [KP::new(Key::Num4, false), KP::new(Key::Num5, false), KP::new(Key::Num6, false)],
+    //KS::ScrollUp    => [KP::new(Key::LCtrl, false), KP::new(Key::Kp8, true)],
 );

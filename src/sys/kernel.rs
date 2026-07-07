@@ -60,7 +60,12 @@ pub fn main() -> ! {
         sys::console::print!("Rustacean", FGColor::Yellow);
         sys::console::println!(", what's up?", FGColor::Magenta);*/
 
-        //time::delay(2);
+        /*for i in 0..50 {
+            sys::time::SysTime::delay(100);
+            sys::console::write_and_flush!("Number: {}\n", i)
+        }*/
+
+        //time::delay(2000);
         //panic!("asfdfasdfasgdewgw");
         //local_buffer.clear_screen(frame);
     }

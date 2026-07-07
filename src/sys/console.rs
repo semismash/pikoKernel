@@ -29,8 +29,7 @@ const TYPEMATIC_SPAM_DELAY_MS: u32 = 40;
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EchoMode {
-    None,
-    #[default] OnlyScroll,
+    #[default] None,
     Immediate,
     OnEnter,
     Silent,
@@ -105,10 +104,10 @@ impl Console {
         let cur_stack_size = keypress_stack.stack_ptr;
         self.cur_action = input::get_action(&keypress_stack.stack, cur_stack_size);
         self.cur_action = input::apply_modifiers(self.cur_action, kbd);
-        if self.cur_action == InputAction::Submit && DisplayWriter::get_row(os_buf.get_offset()) >= BUFFER_HEIGHT - 1 {
-            self.cur_action = InputAction::None; 
-            return;
-        }
+        // if self.cur_action == InputAction::Submit && DisplayWriter::get_row(os_buf.get_offset()) >= BUFFER_HEIGHT - 1 {
+        //     self.cur_action = InputAction::None; 
+        //     return;
+        // }
         self.execute_console_action(&mut *input_buf, &mut *os_buf);
     }
 
@@ -118,40 +117,44 @@ impl Console {
         os_buf: &mut DisplayWriter,
     ) {
         unsafe {
+            if self.try_force_scroll(os_buf) { os_buf.flush_sync(FRAME); return; }
             match self.echo_mode {
-                EchoMode::None => {},
-                EchoMode::OnlyScroll => {
-                    match self.cur_action {
-                        InputAction::ScrollUp => { os_buf.scroll(display::ScrollDirection::Up); }
-                        InputAction::ScrollDown => { os_buf.scroll(display::ScrollDirection::Down); }
-                        InputAction::ScrollLeft => { os_buf.scroll(display::ScrollDirection::Left); }
-                        InputAction::ScrollRight => { os_buf.scroll(display::ScrollDirection::Right); }
-                        _ => { return; }
-                    }
-                    os_buf.flush_sync(FRAME);
-                }
+                EchoMode::None => { },
                 EchoMode::Immediate => {
-                    if !(matches!(self.cur_action, InputAction::AddChar(..)) || (self.cur_action == InputAction::Submit))
-                        || !(os_buf.check_if_full() || input_buf.is_full())
-                    {    
-                        input_buf.execute_action(self.cur_action); 
-                        os_buf.write_from_input_buf(&*input_buf);
-                        os_buf.flush_sync(FRAME);
-                    }
-                },
-                EchoMode::OnEnter => {  
-                    if !(matches!(self.cur_action, InputAction::AddChar(..)) || self.cur_action == InputAction::Submit)
-                        || !(os_buf.check_if_full() || input_buf.is_full()) 
-                    {
+                    let is_char_or_submit = matches!(self.cur_action, InputAction::AddChar(..))
+                        || self.cur_action == InputAction::Submit;
+                    let buf_offset = os_buf.get_offset();
+                    let can_accept = if self.cur_action == InputAction::Submit {
+                        !input_buf.is_full() && DisplayWriter::get_row(buf_offset) < BUFFER_HEIGHT - 1
+                    } else {
+                        !input_buf.is_full() && buf_offset < BUFFER_CAPACITY - 1
+                    };
+                    if !is_char_or_submit || can_accept {
                         input_buf.execute_action(self.cur_action);
                         os_buf.write_from_input_buf(&*input_buf);
-                        if self.cur_action == InputAction::Submit { 
-                            os_buf.flush_sync(FRAME); 
+                        self.try_scroll(os_buf);
+                    }
+                },
+                EchoMode::OnEnter => {
+                    let is_char_or_submit = matches!(self.cur_action, InputAction::AddChar(..))
+                        || self.cur_action == InputAction::Submit;
+                    let buf_offset = os_buf.get_offset();
+                    let can_accept = if self.cur_action == InputAction::Submit {
+                        !input_buf.is_full() && DisplayWriter::get_row(buf_offset) < BUFFER_HEIGHT - 1
+                    } else {
+                        !input_buf.is_full() && buf_offset < BUFFER_CAPACITY - 1
+                    };
+                    if !is_char_or_submit || can_accept {
+                        input_buf.execute_action(self.cur_action);
+                        os_buf.write_from_input_buf(&*input_buf);
+                        if self.cur_action == InputAction::Submit {
+                            self.try_scroll(os_buf);
                         }
                     }
                 },
                 EchoMode::Silent => {
                     input_buf.execute_action(self.cur_action);
+                    return;
                 },
                 /*
                 EchoMode::Masked(ch) => {
@@ -160,7 +163,25 @@ impl Console {
                 */
                 _ => {}
             }
+            os_buf.flush_sync(FRAME);
         }
+    }
+
+    fn try_scroll(&self, os_buf: &mut DisplayWriter) {   // helper
+        if matches!(self.cur_action, InputAction::MoveUp | InputAction::MoveDown | InputAction::MoveLeft | InputAction::MoveRight) {
+            os_buf.try_snap_to_cursor();
+        }
+    }
+
+    fn try_force_scroll(&self, os_buf: &mut DisplayWriter) -> bool {
+        match self.cur_action {
+            InputAction::ScrollUp => { os_buf.scroll(display::ScrollDirection::Up); }
+            InputAction::ScrollDown => { os_buf.scroll(display::ScrollDirection::Down); }
+            InputAction::ScrollLeft => { os_buf.scroll(display::ScrollDirection::Left); }
+            InputAction::ScrollRight => { os_buf.scroll(display::ScrollDirection::Right); }
+            _ => { return false; }
+        }
+        true
     }
 
 }
