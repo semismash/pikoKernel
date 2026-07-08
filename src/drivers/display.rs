@@ -490,7 +490,7 @@ macro_rules! println {
                     None,
                     None,
                 );
-                let nl_res = $buf.write_char_to_buf(nl_char, true);     // to be changed later
+                let nl_res = $buf.write_char_to_buf(nl_char, true);     // to be changed
                 if nl_res.is_ok() {
                     unsafe { $buf.flush_sync($frame); }
                 }

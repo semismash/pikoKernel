@@ -54,7 +54,7 @@ pub fn main() -> ! {
         crate::sys::time::SysTime::delay(2000);*/
 
         sys::console::println!("OS BOOTED!");
-        sys::console::println!("Red colored text", FGColor::Red);
+        sys::console::println!("Red colored text", FGColor::Red, BGColor::Brown, false);
 
         /*sys::console::print!("I'm a ", FGColor::Magenta);
         sys::console::print!("Rustacean", FGColor::Yellow);

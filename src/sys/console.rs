@@ -104,10 +104,6 @@ impl Console {
         let cur_stack_size = keypress_stack.stack_ptr;
         self.cur_action = input::get_action(&keypress_stack.stack, cur_stack_size);
         self.cur_action = input::apply_modifiers(self.cur_action, kbd);
-        // if self.cur_action == InputAction::Submit && DisplayWriter::get_row(os_buf.get_offset()) >= BUFFER_HEIGHT - 1 {
-        //     self.cur_action = InputAction::None; 
-        //     return;
-        // }
         self.execute_console_action(&mut *input_buf, &mut *os_buf);
     }
 
