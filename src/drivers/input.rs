@@ -182,7 +182,6 @@ impl InputBuffer {  // helpers
     }
 
     // find the corresponding idx value using the info we have, to set the new current cursor position
-    // used some ai help for this code snippet cuz it was almost 2am in the night and i was feeling depressed af due to family and relationship issues
     fn find_idx_at_visual(&self, target_row: usize, target_col: usize) -> usize {
         let mut row = 0;
         let mut col = 0;
@@ -235,7 +234,7 @@ impl KeyPressConfig {
 }
 
 pub fn get_action(keypress_stack: &[KeyPress; KeypressStack::KEYPRESS_STACK_LENGTH as usize], active_stack_size: u8) -> InputAction {
-    let mut bitmask: [u64; 4] = [0xFFFFFFFFFFFFFFFF; 4];  // 256 bits, one per keystroke entry, can be changed later
+    let mut bitmask: [u32; 8] = [0xFFFFFFFF; 8];  // 256 bits, one per keystroke entry, can be changed later
     let mut candidate: usize = 0;   
     let mut final_candidate: Option<usize> = None;
     let mut single_key_fallback_idx: Option<usize> = None; 
@@ -246,8 +245,8 @@ pub fn get_action(keypress_stack: &[KeyPress; KeypressStack::KEYPRESS_STACK_LENG
         let mut candidate_count: usize = 0;      //number of potential candidates for keypress 
         for j in 0..KEYSTROKE_MAX_COUNT {   // go through each individual keypress and check if it matches
             let cur_keypress = (KEYSTROKE_TABLE[j].1)[i];
-            let word = j / 64;
-            let bit = j % 64;
+            let word = j / 32;
+            let bit = j % 32;
 
             // only checks on i = 0 i.e. first column
             if i == 0 && cur_keypress.equals_key(&keypress_stack[(active_stack_size - 1) as usize]) {
@@ -261,7 +260,7 @@ pub fn get_action(keypress_stack: &[KeyPress; KeypressStack::KEYPRESS_STACK_LENG
                     candidate = j;
                     candidate_count += 1;
                 } else {
-                    bitmask[word] &= !(1u64 << bit);    // turn bit j off if not valid
+                    bitmask[word] &= !(1u32 << bit);    // turn bit j off if not valid
                 }
             }
         }
