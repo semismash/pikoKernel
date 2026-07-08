@@ -116,6 +116,7 @@ impl Console {
         input_buf: &mut InputBuffer,
         os_buf: &mut DisplayWriter,
     ) {
+        os_buf.update_metadata();
         unsafe {
             if self.try_force_scroll(os_buf) { os_buf.flush_sync(FRAME); return; }
             match self.echo_mode {
@@ -168,8 +169,9 @@ impl Console {
     }
 
     fn try_scroll(&self, os_buf: &mut DisplayWriter) {   // helper
-        if matches!(self.cur_action, InputAction::MoveUp | InputAction::MoveDown | InputAction::MoveLeft | InputAction::MoveRight) {
-            os_buf.try_snap_to_cursor();
+        match self.cur_action {
+            InputAction::None | InputAction::ScrollUp | InputAction::ScrollDown | InputAction::ScrollLeft | InputAction::ScrollRight => {},
+            _ => { os_buf.try_snap_to_cursor(); }
         }
     }
 

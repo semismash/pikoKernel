@@ -1,5 +1,5 @@
 use core::arch;
-use crate::drivers::display::BUFFER_WIDTH;
+use crate::drivers::{FLUSH_FRAME_WIDTH, display::BUFFER_WIDTH};
 
 pub const VGA_BUFFER_ADR: *mut u8 = 0xb8000 as *mut u8;
 const PORT_INDEX: u16 = 0x3D4u16;
@@ -46,7 +46,7 @@ pub fn disable_cursor() {
 }
 
 pub fn update_cursor(row: usize, col: usize) {
-    let pos = (row * BUFFER_WIDTH + col) as u16;
+    let pos = (row * FLUSH_FRAME_WIDTH + col) as u16;
 
     unsafe {
         arch::asm!("out dx, al", in("dx") PORT_INDEX, in("al") 0x0Fu8, 

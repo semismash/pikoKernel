@@ -55,10 +55,10 @@ impl Key {
 pub struct Keyboard {
     pub lshift: bool,
     pub rshift: bool,
-    /*pub lctrl: bool,
+    pub lctrl: bool,
     pub rctrl: bool,
     pub lalt: bool,
-    pub ralt: bool,*/
+    pub ralt: bool,
     pub capslk_on: bool,
     pub numlk_on: bool,
     pub scrllk_on: bool,
@@ -122,10 +122,10 @@ impl Keyboard {
         Self {
             lshift: false,
             rshift: false,
-            /*lctrl: false,
+            lctrl: false,
             rctrl: false,
             lalt: false,
-            ralt: false,*/
+            ralt: false,
             capslk_on: false,
             numlk_on: false,
             scrllk_on: false,
@@ -145,8 +145,8 @@ impl Keyboard {
             match scancode {
                 0x2A => { self.lshift    = !is_release; true },
                 0x36 => { self.rshift    = !is_release; true },
-                /*0x1D => { if IS_EXTENDED { self.rctrl = !is_release; } else { self.lctrl = !is_release; } true },
-                0x38 => { if IS_EXTENDED { self.ralt   = !is_release; } else { self.lalt  = !is_release; } true },*/
+                0x1D => { if IS_EXTENDED { self.rctrl = !is_release; } else { self.lctrl = !is_release; } false },
+                0x38 => { if IS_EXTENDED { self.ralt   = !is_release; } else { self.lalt  = !is_release; } true },
                 0x3A => { if !is_release { self.capslk_on = !self.capslk_on; } true },
                 0x45 => { if !is_release { self.numlk_on  = !self.numlk_on;  } true },
                 0x46 => { if !is_release { self.scrllk_on = !self.scrllk_on; } true },

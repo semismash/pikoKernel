@@ -3,11 +3,9 @@ use core::{ascii::Char};
 use core::ptr::{write, write_volatile};
 use core::fmt;
 use crate::arch::i686::vga::update_cursor;
-use crate::drivers::ScrollDirection::Up;
 use crate::sys;
 use crate::drivers::input;
 use crate::drivers::input::InputBuffer;
-//use core::cell::SyncUnsafeCell;
 
 pub const BUFFER_WIDTH: usize = 80;
 pub const BUFFER_HEIGHT: usize = 200;
@@ -48,6 +46,7 @@ pub struct DisplayWriter {
     on_cursor_disable: Option<fn()>,
     on_cursor_update: Option<fn(usize, usize)>,
     last_tick: u32, // for concurrency and synchronization
+    metadata: RowAndColMetadata,    // for quick reference and calculation
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -136,13 +135,6 @@ impl ScreenCharacter {
 
 }
 
-/*struct RowAndColMetadata { // old version
-    cursor_row: Option<usize>,
-    cursor_col: Option<usize>,
-    flush_frame_row: Option<usize>,
-    flush_frame_col: Option<usize>,
-}*/
-
 struct RowAndColMetadata {
     cursor_row: usize,
     cursor_col: usize,
@@ -152,27 +144,14 @@ struct RowAndColMetadata {
 
 impl RowAndColMetadata {
 
-    // fn new() -> Self {
-    //     Self {
-    //         cursor_row: None,
-    //         cursor_col: None,
-    //         flush_frame_row: None,
-    //         flush_frame_col: None,
-    //     }
-    // }
-
-    // fn from_offset(cursor_offset: Option<usize>, flush_frame_offset: Option<usize>) -> Self {
-    //     Self {
-    //         cursor_row: cursor_offset.map_or(None, |offset| Some(offset / BUFFER_WIDTH)),
-    //         cursor_col: cursor_offset.map_or(None, |offset| Some(offset % BUFFER_WIDTH)),
-    //         flush_frame_row: cursor_offset.map_or(None, |offset| Some(offset / BUFFER_WIDTH))),
-    //         flush_frame_col: cursor_offset.map_or(None, |offset| Some(offset % BUFFER_WIDTH))),
-    //     }
-    // }
-
-    // fn from_cur_values(display_writer: &DisplayWriter) -> Self {
-    //     Self::from_offset(Some(display_writer.cursor_idx), Some(display_writer.flush_frame_ptr))
-    // }
+    const fn new() -> Self {
+        Self {
+            cursor_row: 0,
+            cursor_col: 0,
+            flush_frame_row: 0,
+            flush_frame_col: 0,
+        }
+    }
 
     fn from_offset(cursor_offset: usize, flush_frame_offset: usize) -> Self {
         Self {
@@ -206,30 +185,41 @@ impl DisplayWriter {
             on_cursor_disable: on_cursor_disable,
             on_cursor_update: on_cursor_update,
             last_tick: 0,
+            metadata: RowAndColMetadata::new(),
         }
     }
 
-    pub fn write_char_to_buf(&mut self, char: ScreenCharacter) -> Result<(), DisplayError> {
+    pub fn update_metadata(&mut self) {
+        self.metadata = RowAndColMetadata::from_cur_values(&self);
+    }
+
+    pub fn write_char_to_buf(&mut self, char: ScreenCharacter, auto_scroll: bool) -> Result<(), DisplayError> {
         if self.offset < BUFFER_CAPACITY {
-            let metadata = RowAndColMetadata::from_cur_values(&self);
             unsafe {
                 if char.ascii_char == 0x0A { /* \n hex is 0x0A */
                     self.offset = (Self::get_row(self.offset) + 1) * BUFFER_WIDTH;
                     self.input_frame_ptr = self.offset;
-                    self.auto_scroll_down(&metadata);
+                    self.cursor_idx = self.offset;
+                    self.update_metadata();
+                    if auto_scroll { 
+                        self.auto_scroll_down(); 
+                        self.update_metadata();
+                    }
                 } else {
-                    let col_pos = Self::get_col(self.offset);
                     let char_ptr = self.buffer.as_mut_ptr() as *mut ScreenCharacter;
                     core::ptr::write(char_ptr.add(self.offset), char);
                     self.offset += 1;
                     self.input_frame_ptr += 1;
+                    self.cursor_idx = self.offset;
+                    self.update_metadata();
                     if Self::get_col(self.offset) == 0 {
                         self.input_frame_ptr = self.offset;
-                        self.auto_scroll_down(&metadata);
+                        if auto_scroll { 
+                            self.auto_scroll_down(); 
+                            self.update_metadata();
+                        }
                     }
                 }
-                //self.input_frame_ptr = self.offset; // TO BE RECHECKED
-                self.cursor_idx = self.offset;
                 Ok(())
             }
         } else {
@@ -238,8 +228,12 @@ impl DisplayWriter {
     }
 
     // helper func, auto scroll down if cursor is at EXACTLY the last row of the flush frame
-    fn auto_scroll_down(&mut self, metadata: &RowAndColMetadata) { 
-        if metadata.cursor_row >= metadata.flush_frame_row + FLUSH_FRAME_HEIGHT - 1 {    
+    fn auto_scroll_down(&mut self) {
+        let cursor_row = self.metadata.cursor_row;
+        let frame_row = self.metadata.flush_frame_row;
+        let cursor_was_visible = cursor_row >= frame_row 
+            && cursor_row < frame_row + FLUSH_FRAME_HEIGHT;
+        if cursor_was_visible && cursor_row >= frame_row + FLUSH_FRAME_HEIGHT - 1 {
             self.scroll(ScrollDirection::Down);
         }
     }
@@ -247,10 +241,12 @@ impl DisplayWriter {
     pub fn write_fmt_text_to_buf<FG, BG, BL>
     (
         &mut self, 
-        text: &str, 
+        text: &str,
         fg_color: FG, 
         bg_color: BG, 
-        blink: BL) 
+        blink: BL,
+        auto_scroll: bool,
+    ) 
     -> Result<(), DisplayError>
     where
         FG: Into<Option<ForegroundColor>> + Copy,
@@ -269,7 +265,7 @@ impl DisplayWriter {
                         bg_color.into().unwrap_or(BackgroundColor::default()),
                         blink.into().unwrap_or(false),
                     );
-                    self.write_char_to_buf(screen_ch)?;
+                    self.write_char_to_buf(screen_ch, auto_scroll)?;
                 }
                 Ok(())
             } else {
@@ -278,66 +274,42 @@ impl DisplayWriter {
         }
     }
 
+    // flush to accomodate for horizontal scroll
     unsafe fn flush(&self, frame_buf: FramePointer) -> Result<(), DisplayError> {
         unsafe {
-            //let src_ptr = self.buffer[self.flush_frame_ptr].as_ptr() as *const u16;
-            let src_ptr = (self.buffer.as_ptr() as *const u16).add(self.flush_frame_ptr);
-            let dst_ptr = frame_buf.0.as_mut_ptr() as *mut u16;
-            for i in 0..(FLUSH_FRAME_WIDTH * FLUSH_FRAME_HEIGHT) {
-                let value = core::ptr::read(src_ptr.add(i));
-                core::ptr::write_volatile(dst_ptr.add(i), value);
+            let src_base = self.buffer.as_ptr() as *const u16;
+            let dst_base = frame_buf.0.as_mut_ptr() as *mut u16;
+            let frame_row = self.metadata.flush_frame_row;
+            let frame_col = self.metadata.flush_frame_col;
+            for i in 0..FLUSH_FRAME_HEIGHT {
+                let src_row_ptr = src_base.add((frame_row + i) * BUFFER_WIDTH + frame_col);
+                let dst_row_ptr = dst_base.add(i * FLUSH_FRAME_WIDTH);
+                for j in 0..FLUSH_FRAME_WIDTH {
+                    let value = core::ptr::read(src_row_ptr.add(j));
+                    core::ptr::write_volatile(dst_row_ptr.add(j), value);
+                }
             }
-            self.flush_cursor()
         }
-        // cursor updation code
+        self.flush_cursor()
     }
-
-    /*fn flush_cursor(&self) -> Result<(), DisplayError> {
-        let fn_cursor_enable = self.on_cursor_enable.ok_or(DisplayError::CursorError)?;
-        let fn_cursor_disable = self.on_cursor_disable.ok_or(DisplayError::CursorError)?;
-        let fn_cursor_update = self.on_cursor_update.ok_or(DisplayError::CursorError)?;
-        // let row = self.cursor_idx / BUFFER_WIDTH;   // RECHECK
-        // let checked_row = if row >= BUFFER_HEIGHT { BUFFER_HEIGHT - 1 } else { row };
-        // let col = self.cursor_idx % BUFFER_WIDTH;   // RECHECK
-        // fn_cursor_update(checked_row, col);
-        let cursor_row = self.cursor_idx / BUFFER_WIDTH;
-        let cursor_col = self.cursor_idx % BUFFER_WIDTH;
-        let frame_row = self.flush_frame_ptr / BUFFER_WIDTH;
-        let frame_col = self.flush_frame_ptr % BUFFER_WIDTH;
-        let display_cursor_row = {
-            let display_diff = cursor_row - frame_row;
-            if cursor_row < frame_row || cursor_row - frame_row > BUFFER_HEIGHT { Some(display_diff) }
-            else { None }
-        };
-        let display_cursor_col = {
-            let display_diff = cursor_col - frame_col;
-            if cursor_col < frame_col || cursor_col - frame_col > BUFFER_HEIGHT { Some(display_diff) }
-            else { None }
-        };
-        if display_cursor_row.is_some() && display_cursor_col.is_some() {
-            fn_cursor_enable(CURSOR_START, CURSOR_END);
-            fn_cursor_update(display_cursor_row.unwrap(), display_cursor_col.unwrap());
-        } else {
-            fn_cursor_disable();
-        }
-        Ok(())
-    }*/
 
     fn flush_cursor(&self) -> Result<(), DisplayError> {
         let fn_cursor_enable = self.on_cursor_enable.ok_or(DisplayError::CursorError)?;
         let fn_cursor_disable = self.on_cursor_disable.ok_or(DisplayError::CursorError)?;
         let fn_cursor_update = self.on_cursor_update.ok_or(DisplayError::CursorError)?;
 
-        let cursor_row = self.cursor_idx / BUFFER_WIDTH;
-        let cursor_col = self.cursor_idx % BUFFER_WIDTH;
-        let frame_row = self.flush_frame_ptr / BUFFER_WIDTH;
-        let frame_col = self.flush_frame_ptr % BUFFER_WIDTH;
-        
-        let is_row_visible = cursor_row >= frame_row && cursor_row - frame_row < FLUSH_FRAME_HEIGHT;
-        let is_col_visible = cursor_col >= frame_col && cursor_col - frame_col < FLUSH_FRAME_WIDTH;
+        let is_row_visible = 
+            self.metadata.cursor_row >= self.metadata.flush_frame_row 
+            && self.metadata.cursor_row - self.metadata.flush_frame_row < FLUSH_FRAME_HEIGHT;
+        let is_col_visible = 
+            self.metadata.cursor_col >= self.metadata.flush_frame_col 
+            && self.metadata.cursor_col - self.metadata.flush_frame_col < FLUSH_FRAME_WIDTH;
         if is_row_visible && is_col_visible {
             fn_cursor_enable(CURSOR_START, CURSOR_END);
-            fn_cursor_update(cursor_row - frame_row, cursor_col - frame_col);
+            fn_cursor_update(
+                self.metadata.cursor_row - self.metadata.flush_frame_row, 
+                self.metadata.cursor_col - self.metadata.flush_frame_col, 
+            );
         } else {
             fn_cursor_disable();
         }
@@ -370,16 +342,9 @@ impl DisplayWriter {
         self.input_frame_ptr = self.offset;
     }
 
-    pub fn snap_to_cursor(&mut self, snap_row: bool, snap_col: bool, metadata: RowAndColMetadata) {  // forcefully snap frame to cursor being to snap relative offset dimensions by default
-        /*let (cursor_row, cursor_col, frame_row, frame_col) = (
-            metadata.cursor_row.unwrap_or(self.cursor_idx / BUFFER_WIDTH),
-            metadata.cursor_col.unwrap_or(self.cursor_idx % BUFFER_WIDTH),
-            metadata.flush_frame_row.unwrap_or(self.flush_frame_ptr / BUFFER_WIDTH),
-            metadata.flush_frame_row.unwrap_or(self.flush_frame_ptr % BUFFER_WIDTH)
-        );*/
-
+    pub fn snap_to_cursor(&mut self, snap_row: bool, snap_col: bool) {  // forcefully snap frame to cursor being to snap relative offset dimensions by default
         let (cursor_row, cursor_col, frame_row, frame_col) = 
-            (metadata.cursor_row, metadata.cursor_col, metadata.flush_frame_row, metadata.flush_frame_col);
+            (self.metadata.cursor_row, self.metadata.cursor_col, self.metadata.flush_frame_row, self.metadata.flush_frame_col);
         
         let mut new_frame_row = frame_row;
         let mut new_frame_col = frame_col;
@@ -410,63 +375,59 @@ impl DisplayWriter {
     pub fn try_snap_to_cursor(&mut self) {  // first checks if snapping/scrolling is required before snapping
         let mut snap_row: bool = false;
         let mut snap_col: bool = false; 
-
-        let metadata = RowAndColMetadata::from_cur_values(&self);
         
-        let frame_bottom = metadata.flush_frame_row + FLUSH_FRAME_HEIGHT;
-        let frame_right  = metadata.flush_frame_col + FLUSH_FRAME_WIDTH;
+        let frame_bottom = self.metadata.flush_frame_row + FLUSH_FRAME_HEIGHT;
+        let frame_right  = self.metadata.flush_frame_col + FLUSH_FRAME_WIDTH;
 
-        if metadata.cursor_row + 1 == metadata.flush_frame_row { // do + 1 on lhs to prevent underflow (smort)
+        if self.metadata.cursor_row + 1 == self.metadata.flush_frame_row { // do + 1 on lhs to prevent underflow (smort)
             self.scroll(ScrollDirection::Up);
-        } else if metadata.cursor_row == frame_bottom {
+        } else if self.metadata.cursor_row == frame_bottom {
             self.scroll(ScrollDirection::Down);
-        } else if metadata.cursor_row < metadata.flush_frame_row || metadata.cursor_row >= frame_bottom {
+        } else if self.metadata.cursor_row < self.metadata.flush_frame_row || self.metadata.cursor_row >= frame_bottom {
             snap_row = true;
         }
 
-        if metadata.cursor_col + 1 == metadata.flush_frame_col {
+        if self.metadata.cursor_col + 1 == self.metadata.flush_frame_col {
             self.scroll(ScrollDirection::Left);
-        } else if metadata.cursor_col == frame_right {
+        } else if self.metadata.cursor_col == frame_right {
             self.scroll(ScrollDirection::Right);
-        } else if metadata.cursor_col < metadata.flush_frame_col || metadata.cursor_col >= frame_right {
+        } else if self.metadata.cursor_col < self.metadata.flush_frame_col || self.metadata.cursor_col >= frame_right {
             snap_col = true;
         }
 
         if snap_row || snap_col {
-            self.snap_to_cursor(snap_row, snap_col, metadata);
+            self.snap_to_cursor(snap_row, snap_col);
         }
     }
 
-    pub fn scroll(&mut self, dir: ScrollDirection) {    // scrolling is unconditional
+    pub fn scroll(&mut self, dir: ScrollDirection) {
         let frame_row = Self::get_row(self.flush_frame_ptr);
         let frame_col = Self::get_col(self.flush_frame_ptr);
-        let mut new_frame = 0;
         match dir {
             ScrollDirection::Up => {
                 if frame_row > 0 {
-                    new_frame = Self::calculate_offset(frame_row - 1, frame_col);
+                    self.flush_frame_ptr = Self::calculate_offset(frame_row - 1, frame_col);
                 }
             },
             ScrollDirection::Left => {
                 if frame_col > 0 {
-                    new_frame = Self::calculate_offset(frame_row, frame_col - 1);
+                    self.flush_frame_ptr = Self::calculate_offset(frame_row, frame_col - 1);
                 }
             },
             ScrollDirection::Down => {
                 if frame_row + FLUSH_FRAME_HEIGHT < BUFFER_HEIGHT {
-                    new_frame = Self::calculate_offset(frame_row + 1, frame_col);
+                    self.flush_frame_ptr = Self::calculate_offset(frame_row + 1, frame_col);
                 }
             },
             ScrollDirection::Right => {
                 if frame_col + FLUSH_FRAME_WIDTH < BUFFER_WIDTH {
-                    new_frame = Self::calculate_offset(frame_row, frame_col + 1);
+                    self.flush_frame_ptr = Self::calculate_offset(frame_row, frame_col + 1);
                 }
             }
         }
-        self.flush_frame_ptr = new_frame;
-        unsafe { self.update_flush_frame(new_frame); }
+        self.update_metadata();
     }
-
+    
     unsafe fn update_flush_frame(&mut self, new_offset: usize) {
         self.flush_frame_ptr = new_offset;
     }
@@ -492,7 +453,7 @@ macro_rules! to_buf {
     };
     ($buf:expr, $txt:expr, $fg:expr, $bg:expr, $bl:expr) => {
         {
-            $buf.write_fmt_text_to_buf($txt, $fg, $bg, $bl)
+            $buf.write_fmt_text_to_buf($txt, $fg, $bg, $bl, true)   // to be changed later
         }
     };
     ($($invalid:tt)*) => {
@@ -529,7 +490,7 @@ macro_rules! println {
                     None,
                     None,
                 );
-                let nl_res = $buf.write_char_to_buf(nl_char);
+                let nl_res = $buf.write_char_to_buf(nl_char, true);     // to be changed later
                 if nl_res.is_ok() {
                     unsafe { $buf.flush_sync($frame); }
                 }
@@ -567,7 +528,7 @@ impl DisplayWriter {
 impl fmt::Write for DisplayWriter {
 
     fn write_str(&mut self, s: &str) -> fmt::Result { // debugging purpose only for now
-        self.write_fmt_text_to_buf(s, None, None, None)
+        self.write_fmt_text_to_buf(s, None, None, None, true)   // to be changed later
             .map_err(|_| fmt::Error)
     }
 
@@ -646,18 +607,19 @@ impl DisplayWriter {
                         );
                         j += 1;
                         cur_col += 1;
-                        if cur_col >= 80 { cur_col = 0; }
+                        if cur_col >= BUFFER_WIDTH { cur_col = 0; }
                     }
                     i += 1;
                 }
                 // if idx == offset, it means the cursor check never fired inside the loop, so default to end
                 let real_end_j = real_end_j.unwrap_or(j);
-                self.cursor_idx = frame_idx + cursor_j.unwrap_or(real_end_j);   // CHANGE
+                self.cursor_idx = frame_idx + cursor_j.unwrap_or(real_end_j);
                 if i < input_buf.offset {
                     self.offset = MAX_SAFE_CAPACITY;
                 } else {
                     self.offset = frame_idx + real_end_j;
                 }
+                self.update_metadata();
             }
             Ok(())
         } else {
