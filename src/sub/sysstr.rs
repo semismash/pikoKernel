@@ -1,6 +1,10 @@
 use core::ascii::Char;
 use core::fmt::{self, Display, Write};
+use core::iter::{Copied, Map};
 use core::ops::Deref;
+use core::slice::Iter;
+
+use crate::sub::sysstr::SysStrError::InvalidASCII;
 
 const STR_LENGTH_DEFAULT: usize = 128;
 const MAX_CAPACITY: usize = 1024;
@@ -29,7 +33,7 @@ impl<const N: usize> SysStr<N> {
         }
     }
 
-    fn from_str(str_in: &str) -> Option<Self> {
+    pub fn from_str(str_in: &str) -> Option<Self> {
         if !str_in.is_ascii() || str_in.len() > N {
             return None;
         }
@@ -50,28 +54,32 @@ impl<const N: usize> SysStr<N> {
 // access
 impl<const N: usize> SysStr<N> {
 
-    fn as_bytes(&self) -> &[u8] {
+    pub fn as_bytes(&self) -> &[u8] {
         let src_ptr = self.container.as_ptr();
         let bytes = unsafe { core::slice::from_raw_parts(src_ptr as *const u8 , self.len) };
         bytes
     }
 
-    fn as_str(&self) -> &str {
+    pub fn as_str(&self) -> &str {
         let bytes = self.as_bytes();
         let str_slice = unsafe{ core::str::from_utf8(bytes).unwrap_unchecked() };   //char is always 8-bit, guaranteed to not fail
         str_slice
     }
 
-    fn len(&self) -> usize {
+    pub fn len(&self) -> usize {
         self.len
     }
 
-    fn is_empty(&self) -> bool {
+    pub fn is_empty(&self) -> bool {
         self.len == 0
     }
 
-    fn capacity(&self) -> usize {
+    pub fn capacity(&self) -> usize {
         N
+    }
+
+    pub fn chars(&self) -> Copied<Iter<'_, Char>> {
+        self.container.iter().copied()
     }
 
 }
@@ -99,7 +107,7 @@ impl<const N: usize> SysStr<N> {
     }
 
     pub fn push_str(&mut self, str_in: &str) -> Result<(), SysStrError> {
-        let new_str = Self::from_str(str_in)?;
+        let new_str = Self::from_str(str_in).ok_or(SysStrError::InvalidASCII)?;
         let _ = self.append(&new_str)?;
         Ok(())
     }

@@ -6,6 +6,7 @@ use crate::arch::i686::vga::update_cursor;
 use crate::sys;
 use crate::drivers::input;
 use crate::drivers::input::InputBuffer;
+use crate::sub::sysstr::{self, SysStr};
 
 pub const BUFFER_WIDTH: usize = 80;
 pub const BUFFER_HEIGHT: usize = 200;
@@ -238,39 +239,35 @@ impl DisplayWriter {
         }
     }
 
-    pub fn write_fmt_text_to_buf<FG, BG, BL>
+    pub fn write_fmt_text_to_buf<const STR_LEN: usize, FG, BG, BL, AS>
     (
         &mut self, 
-        text: &str,
+        text: &SysStr<STR_LEN>,
         fg_color: FG, 
         bg_color: BG, 
         blink: BL,
-        auto_scroll: bool,
+        auto_scroll: AS,
     ) 
     -> Result<(), DisplayError>
     where
         FG: Into<Option<ForegroundColor>> + Copy,
         BG: Into<Option<BackgroundColor>> + Copy,
         BL: Into<Option<bool>> + Copy,
+        AS: Into<Option<bool>> + Copy,
     {
-        if !text.is_ascii() {
-            Err(DisplayError::InvalidASCIIError)
-        } else {
-            if text.len() <= (BUFFER_CAPACITY) - self.offset {
-                for ch in text.chars() {
-                    let ascii_ch = unsafe { core::ascii::Char::from_u8_unchecked(ch as u8) };
-                    let screen_ch = ScreenCharacter::new(
-                        ascii_ch, 
-                        fg_color.into().unwrap_or(ForegroundColor::default()), 
-                        bg_color.into().unwrap_or(BackgroundColor::default()),
-                        blink.into().unwrap_or(false),
-                    );
-                    self.write_char_to_buf(screen_ch, auto_scroll)?;
-                }
-                Ok(())
-            } else {
-                Err(DisplayError::WriteError)
+        if text.len() <= (BUFFER_CAPACITY) - self.offset {
+            for ch in text.chars() {
+                let screen_ch = ScreenCharacter::new(
+                    ch, 
+                    fg_color.into().unwrap_or(ForegroundColor::default()), 
+                    bg_color.into().unwrap_or(BackgroundColor::default()),
+                    blink.into().unwrap_or(false),
+                );
+                self.write_char_to_buf(screen_ch, auto_scroll.into().unwrap_or(true))?;
             }
+            Ok(())
+        } else {
+            Err(DisplayError::WriteError)
         }
     }
 
@@ -453,7 +450,8 @@ macro_rules! to_buf {
     };
     ($buf:expr, $txt:expr, $fg:expr, $bg:expr, $bl:expr) => {
         {
-            $buf.write_fmt_text_to_buf($txt, $fg, $bg, $bl, true)   // to be changed later
+            let sysstr_txt = $crate::sub::sysstr::SysStr::<128>::from_str($txt).unwrap();
+            $buf.write_fmt_text_to_buf(&sysstr_txt, $fg, $bg, $bl, true)   // to be changed later
         }
     };
     ($($invalid:tt)*) => {
@@ -528,7 +526,7 @@ impl DisplayWriter {
 impl fmt::Write for DisplayWriter {
 
     fn write_str(&mut self, s: &str) -> fmt::Result { // debugging purpose only for now
-        self.write_fmt_text_to_buf(s, None, None, None, true)   // to be changed later
+        self.write_fmt_text_to_buf(&SysStr::<128>::from_str(s).unwrap(), None, None, None, true)   // temporarily converted &str -> SysStr, the implementation of Write is to be removed entirely later on
             .map_err(|_| fmt::Error)
     }
 

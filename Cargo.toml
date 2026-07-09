@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [lib]
+# proc-macro = true
 name = "pikoKernel"
 crate-type = ["staticlib"]
 path = "src/lib.rs"
