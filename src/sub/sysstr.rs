@@ -3,6 +3,7 @@ use core::fmt::{self, Display, Write};
 use core::ops::Deref;
 
 const STR_LENGTH_DEFAULT: usize = 128;
+const MAX_CAPACITY: usize = 1024;
 
 #[derive(Debug)]
 pub struct SysStr<const N: usize = STR_LENGTH_DEFAULT> {
@@ -10,21 +11,22 @@ pub struct SysStr<const N: usize = STR_LENGTH_DEFAULT> {
     len: usize, //pointer to the last element, can point to position out of buffer so BE CAREFUL
 }
 
+#[derive(Debug, Clone, Copy)]
 pub enum SysStrError {
     UnknownError,
     CapacityExceeded,
     InvalidLenError,
-    InvalidUTF8,
+    InvalidASCII,
 }
 
 impl<const N: usize> SysStr<N> {
 
-    pub const fn new(size: usize) -> Option<Self> {
-        if N > MAX_CAPACITY { return None; }
-        Some(Self {
+    pub const fn new() -> Self {
+        assert!(N <= MAX_CAPACITY);
+        Self {
             container: [Char::Null; N],
             len: 0
-        })
+        }
     }
 
     fn from_str(str_in: &str) -> Option<Self> {
@@ -50,7 +52,7 @@ impl<const N: usize> SysStr<N> {
 
     fn as_bytes(&self) -> &[u8] {
         let src_ptr = self.container.as_ptr();
-        let bytes = unsafe { core::slice::from_raw_parts(stc_ptr as *const u8 , self.len) };
+        let bytes = unsafe { core::slice::from_raw_parts(src_ptr as *const u8 , self.len) };
         bytes
     }
 
@@ -78,12 +80,13 @@ impl<const N: usize> SysStr<N> {
 impl<const N: usize> SysStr<N> {
 
     pub fn push(&mut self, ch: Char) -> Result<(), SysStrError> {
-        if len >= N { return Err(SysStrError::CapacityExceeded) }
-        self.container[len] = ch;
+        if self.len >= N { return Err(SysStrError::CapacityExceeded) }
+        self.container[self.len] = ch;
+        self.len += 1;
         Ok(())
     }
 
-    pub fn append(&mut self, str_in: &SysStr) -> Result<(), SysStrError> {
+    pub fn append<const M: usize>(&mut self, str_in: &SysStr<M>) -> Result<(), SysStrError> {
         let src_len = str_in.len();
         if src_len > N - self.len { return Err(SysStrError::CapacityExceeded); }
         unsafe {
@@ -106,10 +109,9 @@ impl<const N: usize> SysStr<N> {
     }
 
     pub fn pop(&mut self) -> Option<Char> {
-        if len == 0 { return None; }
-        len -= 1;
-        let ch = self.container[len as usize];  // as usize to get rust analyzer to work and detect the type
-        self.container[len] = Char::Null;
+        if self.len == 0 { return None; }
+        self.len -= 1;
+        let ch = self.container[self.len];
         Some(ch)
     }
 
@@ -122,7 +124,7 @@ impl<const N: usize> SysStr<N> {
 }
 
 // formatting
-impl Write for SysStr {
+impl<const N: usize> Write for SysStr<N> {
 
     fn write_str(&mut self, s: &str) -> fmt::Result {
         let s_len = s.len();
@@ -141,7 +143,7 @@ impl Write for SysStr {
 
 }
 
-impl Display for SysStr {
+impl<const N: usize> Display for SysStr<N> {
 
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.write_str(self.as_str())
@@ -149,7 +151,7 @@ impl Display for SysStr {
 
 }
 
-impl Deref for SysStr {
+impl<const N: usize> Deref for SysStr<N> {
     type Target = str;
 
     fn deref(&self) -> &Self::Target {
@@ -158,20 +160,19 @@ impl Deref for SysStr {
 
 }
 
-impl PartialEq for SysStr {
+impl<const N: usize, const M: usize> PartialEq<SysStr<M>> for SysStr<N> {
 
-    fn eq(&self, other: &Self) -> bool {
-        if self.len != other.len() { return false; }
-        self.container[..] == other.container[..]
+    fn eq(&self, other: &SysStr<M>) -> bool {
+        self.as_str() == other.as_str()
     }
 
-    fn ne(&self, other: &Self) -> bool {
+    fn ne(&self, other: &SysStr<M>) -> bool {
         !self.eq(other)
     }
 
 }
 
-impl PartialEq<&str> for SysStr {
+impl<const N: usize> PartialEq<&str> for SysStr<N> {
 
     fn eq(&self, other: &&str) -> bool {
         self.as_str() == *other
@@ -183,12 +184,11 @@ impl PartialEq<&str> for SysStr {
 
 }
 
-impl TryFrom<&str> for SysStr {
-
+impl<const N: usize> TryFrom<&str> for SysStr<N> {
     type Error = SysStrError;
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
-        Self::from_str(value).ok_or(SysStrError::InvalidUTF8)
+        Self::from_str(value).ok_or(SysStrError::InvalidASCII)
     }
 
 }
