@@ -1,8 +1,10 @@
 use core::ascii::Char;
+use core::fmt::{self, Display, Write};
+use core::ops::Deref;
 
 const STR_LENGTH_DEFAULT: usize = 128;
-const MAX_CAPACITY: usize = 1024;
 
+#[derive(Debug)]
 pub struct SysStr<const N: usize = STR_LENGTH_DEFAULT> {
     container: [Char; N],
     len: usize, //pointer to the last element, can point to position out of buffer so BE CAREFUL
@@ -10,13 +12,14 @@ pub struct SysStr<const N: usize = STR_LENGTH_DEFAULT> {
 
 pub enum SysStrError {
     UnknownError,
-    PushError,
+    CapacityExceeded,
     InvalidLenError,
+    InvalidUTF8,
 }
 
 impl<const N: usize> SysStr<N> {
 
-    const fn new(size: usize) -> Option<Self> {
+    pub const fn new(size: usize) -> Option<Self> {
         if N > MAX_CAPACITY { return None; }
         Some(Self {
             container: [Char::Null; N],
@@ -24,23 +27,19 @@ impl<const N: usize> SysStr<N> {
         })
     }
 
-    const fn from_str(str_in: &str) -> Option<Self>  {
-        if str_in.is_empty() || !str_in.is_ascii() {
-            return None
+    fn from_str(str_in: &str) -> Option<Self> {
+        if !str_in.is_ascii() || str_in.len() > N {
+            return None;
         }
 
-        let mut buf = [Char::Null; MAX_CAPACITY];
-        let mut char_iter = str_in.chars();
-
-        let len = str_in.len();
-        for ch in buf.iter_mut().take(len) {
-            let raw_ch = char_iter.next().unwrap() as u32 as u8;
-            *ch = Char::try_from(raw_ch).unwrap();
-        } 
+        let mut buf = [Char::Null; N];
+        for (ch, byte) in buf.iter_mut().zip(str_in.bytes()) {
+            *ch = Char::from_u8(byte)?;
+        }
 
         Some(Self {
             container: buf,
-            len: len,
+            len: str_in.len(),
         })
     }
     
@@ -57,7 +56,7 @@ impl<const N: usize> SysStr<N> {
 
     fn as_str(&self) -> &str {
         let bytes = self.as_bytes();
-        let str_slice = core::str::from_utf8(bytes).unwrap();   //char is always 8-bit, guaranteed to not
+        let str_slice = unsafe{ core::str::from_utf8(bytes).unwrap_unchecked() };   //char is always 8-bit, guaranteed to not fail
         str_slice
     }
 
@@ -78,33 +77,35 @@ impl<const N: usize> SysStr<N> {
 // mutation
 impl<const N: usize> SysStr<N> {
 
-    fn push(&mut self, ch: Char) -> Result<(), SysStrError> {
-        if len >= N { return Err(SysStrError::PushError) }
+    pub fn push(&mut self, ch: Char) -> Result<(), SysStrError> {
+        if len >= N { return Err(SysStrError::CapacityExceeded) }
         self.container[len] = ch;
         Ok(())
     }
 
-    fn append(&mut self, str_in: &SysStr) -> Result<(), SysStrError> {
+    pub fn append(&mut self, str_in: &SysStr) -> Result<(), SysStrError> {
         let src_len = str_in.len();
-        if src_len > N - self.len { return Err(SysStrError::PushError); }
-        let src_ptr = str_in.container.as_ptr();
-        let dst_ptr = self.container.as_mut_ptr();
-        unsafe { core::ptr::copy_nonoverlapping(src_ptr, dst_ptr, src_len); }
+        if src_len > N - self.len { return Err(SysStrError::CapacityExceeded); }
+        unsafe {
+            let src_ptr = str_in.container.as_ptr();
+            let dst_ptr = self.container.as_mut_ptr().add(self.len);
+            core::ptr::copy_nonoverlapping(src_ptr, dst_ptr, src_len);
+        }
         self.len += src_len;
         Ok(())
     }
 
-    fn push_str(&mut self, str_in: &str) -> Result<(), SysStrError> {
+    pub fn push_str(&mut self, str_in: &str) -> Result<(), SysStrError> {
         let new_str = Self::from_str(str_in)?;
         let _ = self.append(&new_str)?;
         Ok(())
     }
 
-    fn clear(&mut self) {
+    pub fn clear(&mut self) {
         self.len = 0;
     }
 
-    fn pop(&mut self) -> Option<Char> {
+    pub fn pop(&mut self) -> Option<Char> {
         if len == 0 { return None; }
         len -= 1;
         let ch = self.container[len as usize];  // as usize to get rust analyzer to work and detect the type
@@ -112,10 +113,82 @@ impl<const N: usize> SysStr<N> {
         Some(ch)
     }
 
-    fn truncate(&mut self, new_len: usize) -> Result<(), SysStrError> { // WARNING: may result in data loss
+    pub fn truncate(&mut self, new_len: usize) -> Result<(), SysStrError> { // WARNING: may result in data loss
         if new_len == 0 || new_len > self.len { return Err(SysStrError::InvalidLenError); }
         self.len = new_len;
         Ok(())
+    }
+
+}
+
+// formatting
+impl Write for SysStr {
+
+    fn write_str(&mut self, s: &str) -> fmt::Result {
+        let s_len = s.len();
+        if !s.is_ascii() || s_len > N - self.len {
+            return Err(fmt::Error);
+        }
+        let dst_ptr = self.container.as_mut_ptr();
+        unsafe {
+            for (i, byte) in s.bytes().enumerate() {    // infallible
+                core::ptr::write(dst_ptr.add(self.len + i), Char::from_u8(byte).unwrap_unchecked());
+            }
+        }
+        self.len += s_len;
+        Ok(())
+    }
+
+}
+
+impl Display for SysStr {
+
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(self.as_str())
+    }
+
+}
+
+impl Deref for SysStr {
+    type Target = str;
+
+    fn deref(&self) -> &Self::Target {
+        self.as_str()
+    }
+
+}
+
+impl PartialEq for SysStr {
+
+    fn eq(&self, other: &Self) -> bool {
+        if self.len != other.len() { return false; }
+        self.container[..] == other.container[..]
+    }
+
+    fn ne(&self, other: &Self) -> bool {
+        !self.eq(other)
+    }
+
+}
+
+impl PartialEq<&str> for SysStr {
+
+    fn eq(&self, other: &&str) -> bool {
+        self.as_str() == *other
+    }
+
+    fn ne(&self, other: &&str) -> bool {
+        !self.eq(other)
+    }
+
+}
+
+impl TryFrom<&str> for SysStr {
+
+    type Error = SysStrError;
+
+    fn try_from(value: &str) -> Result<Self, Self::Error> {
+        Self::from_str(value).ok_or(SysStrError::InvalidUTF8)
     }
 
 }
