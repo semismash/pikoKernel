@@ -163,7 +163,7 @@ impl<const N: usize> Deref for SysStr<N> {
 impl<const N: usize, const M: usize> PartialEq<SysStr<M>> for SysStr<N> {
 
     fn eq(&self, other: &SysStr<M>) -> bool {
-        self.as_str() == other.as_str()
+        self.as_bytes() == other.as_bytes()
     }
 
     fn ne(&self, other: &SysStr<M>) -> bool {
