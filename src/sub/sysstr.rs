@@ -4,6 +4,8 @@ use core::iter::{Copied, Map};
 use core::ops::Deref;
 use core::slice::Iter;
 
+use crate::drivers::display::{ForegroundColor, BackgroundColor};
+
 use crate::sub::sysstr::SysStrError::InvalidASCII;
 
 const STR_LENGTH_DEFAULT: usize = 128;
@@ -197,6 +199,52 @@ impl<const N: usize> TryFrom<&str> for SysStr<N> {
 
     fn try_from(value: &str) -> Result<Self, Self::Error> {
         Self::from_str(value).ok_or(SysStrError::InvalidASCII)
+    }
+
+}
+
+// formatted string type for display
+struct DisplayString<const N: usize = STR_LENGTH_DEFAULT> {
+    content: SysStr,
+    fg_color: ForegroundColor,
+    bg_color: BackgroundColor,
+    blink: bool,
+}
+
+// initialization
+impl<const N: usize> DisplayString<N> {
+
+    pub const fn new() -> Self {
+        Self {
+            content: SysStr::<N>::new(),
+            fg_color: ForegroundColor::default(),
+            bg_color: BackgroundColor::default(),
+            blink: false,   // default
+        }
+    }
+
+    pub fn from_str<FG, BG, BL>(
+        str_in: &str,
+        fg_color: FG,
+        bg_color: BG,
+        blink: BL,
+    ) -> Option<Self> 
+    where
+        FG: Into<Option<ForegroundColor>> + Copy,
+        BG: Into<Option<BackgroundColor>> + Copy,
+        BL: Into<Option<bool>> + Copy,
+    {
+        let new_str = SysStr::<N>::from_str(str_in)?;
+        Some(Self {
+            content: new_str,
+            fg_color: fg_color.into().unwrap_or(ForegroundColor::default()),
+            bg_color: bg_color.into().unwrap_or(BackgroundColor::default()),
+            blink: blink.into().unwrap_or(false),
+        })
+    }
+
+    pub fn from_str_default(str_in: &str) -> Option<Self> {
+        Self::<N>::from_str(str_in, None, None, None)
     }
 
 }
