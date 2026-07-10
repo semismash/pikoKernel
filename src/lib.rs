@@ -13,6 +13,8 @@ pub mod drivers;
 pub mod arch;
 pub mod mem;
 pub mod sub;
+pub mod base;
+pub mod utils;
 
 #[unsafe(no_mangle)]
 pub extern "C" fn kernel_main() -> ! {
