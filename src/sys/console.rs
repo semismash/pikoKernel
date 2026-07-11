@@ -1,4 +1,3 @@
-use crate::arch::i686::kbd::Key::P;
 use crate::drivers::{BUFFER_CAPACITY, display};
 use crate::drivers::display::{DisplayWriter, BUFFER_WIDTH, BUFFER_HEIGHT};
 use crate::arch::i686::vga::{self, disable_cursor};
