@@ -1,3 +1,5 @@
+use crate::arch::i686::kbd::Key::P;
+
 pub struct TextBuffer<T, const N: usize> {
     container: [T; N],
 }
@@ -24,6 +26,9 @@ impl<T, const N: usize> TextBuffer<T, N> {
             container: [T::default(); N],
         }
     }
+
+    pub unsafe fn get_ptr(&self) -> *const T { self.container.as_ptr() }
+    pub unsafe fn get_mut_ptr(&mut self) -> *mut T { self.container.as_mut_ptr() }
 
     pub fn get(&self, pos: usize) -> Option<&T> {
         self.container.get(pos)
