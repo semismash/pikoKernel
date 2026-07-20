@@ -34,6 +34,11 @@ impl<const W: usize, const H: usize> DisplayBuffer<W, H> {
 
     pub fn write_char(&mut self, ch: ScreenCharacter) -> Result<(), DisplayError> { // set char and then advance cursor without shifting
         self.set_char(ch)?;
+        if self.offset < W * H { 
+            self.offset += 1;
+        } else {
+            return Err(DisplayError::WriteError);
+        }
         self.forward_cursor()
     }
 

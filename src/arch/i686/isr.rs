@@ -1,4 +1,4 @@
-use crate::drivers::display;
+use crate::drivers::display_old;
 use core::arch;
 
 const PIC_EOI: u8 = 0x20;

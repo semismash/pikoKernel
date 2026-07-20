@@ -175,7 +175,7 @@ impl InputBuffer {  // helpers
                 row += 1; col = 0;
             } else {
                 col += 1;
-                if col >= crate::drivers::display::BUFFER_WIDTH { col = 0; row += 1; }
+                if col >= crate::drivers::display_old::BUFFER_WIDTH { col = 0; row += 1; }
             }
         }
         (row, col)
@@ -198,7 +198,7 @@ impl InputBuffer {  // helpers
                 row += 1; col = 0;
             } else {
                 col += 1;
-                if col >= crate::drivers::display::BUFFER_WIDTH { col = 0; row += 1; }
+                if col >= crate::drivers::display_old::BUFFER_WIDTH { col = 0; row += 1; }
             }
         }
         last_on_row.unwrap_or(self.offset)  // target row past content, or clamp to row end

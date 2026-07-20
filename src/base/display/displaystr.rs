@@ -4,7 +4,7 @@ use crate::drivers::display::{ForegroundColor, BackgroundColor};
 use core::ops::{Deref, DerefMut};
 
 // formatted string type for display
-struct DisplayString<const N: usize = STR_LENGTH_DEFAULT> {
+pub struct DisplayString<const N: usize = STR_LENGTH_DEFAULT> {
     content: SysStr,
     fg_color: ForegroundColor,
     bg_color: BackgroundColor,

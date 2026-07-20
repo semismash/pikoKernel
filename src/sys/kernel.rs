@@ -2,19 +2,19 @@ use core::arch;
 use crate::arch::i686;
 use crate::arch::i686::gdt::GDTPointer;
 use crate::drivers::BackgroundColor::Green;
-use crate::drivers::display::ForegroundColor as FGColor;
-use crate::drivers::display::BackgroundColor as BGColor;
-use crate::drivers::display;
-use crate::drivers::display::*;
+use crate::drivers::display_old::ForegroundColor as FGColor;
+use crate::drivers::display_old::BackgroundColor as BGColor;
+use crate::drivers::display_old;
+use crate::drivers::display_old::*;
 use crate::drivers::input::InputAction;
 use crate::sub::spin::SpinLock;
 use crate::sys;
-use crate::drivers::display::{DisplayWriter, BUFFER_WIDTH, BUFFER_HEIGHT};
+use crate::drivers::display_old::{DisplayWriter, BUFFER_WIDTH, BUFFER_HEIGHT};
 use crate::arch::i686::vga;
-use crate::drivers::display::ScreenCharacter;
+use crate::drivers::display_old::ScreenCharacter;
 use crate::sys::time;
 use crate::sys::Console;
-use crate::drivers::display::{CURSOR_START, CURSOR_END};
+use crate::drivers::display_old::{CURSOR_START, CURSOR_END};
 
 use core::fmt::Write;
 

@@ -1,5 +1,5 @@
-use crate::drivers::{BUFFER_CAPACITY, display};
-use crate::drivers::display::{DisplayWriter, BUFFER_WIDTH, BUFFER_HEIGHT};
+use crate::drivers::{BUFFER_CAPACITY, display_old};
+use crate::drivers::display_old::{DisplayWriter, BUFFER_WIDTH, BUFFER_HEIGHT};
 use crate::arch::i686::vga::{self, disable_cursor};
 use crate::sub::spin::SpinLock;
 use crate::sys::EchoMode::Immediate;
@@ -10,7 +10,7 @@ use crate::drivers::input;
 use crate::drivers::input::{InputBuffer, InputAction};
 use crate::arch::i686::kbd::{Keyboard, KeypressStack};
 
-pub(crate) static FRAME: display::FramePointer = display::FramePointer(
+pub(crate) static FRAME: display_old::FramePointer = display_old::FramePointer(
     vga::VGA_BUFFER_ADR as *mut [[u16; BUFFER_WIDTH]; BUFFER_HEIGHT]
 );
 
@@ -172,10 +172,10 @@ impl Console {
 
     fn try_force_scroll(&self, os_buf: &mut DisplayWriter) -> bool {
         match self.cur_action {
-            InputAction::ScrollUp => { os_buf.scroll(display::ScrollDirection::Up); }
-            InputAction::ScrollDown => { os_buf.scroll(display::ScrollDirection::Down); }
-            InputAction::ScrollLeft => { os_buf.scroll(display::ScrollDirection::Left); }
-            InputAction::ScrollRight => { os_buf.scroll(display::ScrollDirection::Right); }
+            InputAction::ScrollUp => { os_buf.scroll(display_old::ScrollDirection::Up); }
+            InputAction::ScrollDown => { os_buf.scroll(display_old::ScrollDirection::Down); }
+            InputAction::ScrollLeft => { os_buf.scroll(display_old::ScrollDirection::Left); }
+            InputAction::ScrollRight => { os_buf.scroll(display_old::ScrollDirection::Right); }
             _ => { return false; }
         }
         true

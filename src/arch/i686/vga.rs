@@ -1,5 +1,5 @@
 use core::arch;
-use crate::drivers::{FLUSH_FRAME_WIDTH, display::BUFFER_WIDTH};
+use crate::drivers::{FLUSH_FRAME_WIDTH, display_old::BUFFER_WIDTH};
 
 pub const VGA_BUFFER_ADR: *mut u8 = 0xb8000 as *mut u8;
 const PORT_INDEX: u16 = 0x3D4u16;
