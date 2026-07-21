@@ -1,13 +1,25 @@
 use crate::base::input::inputbuffer::{self, InputBuffer};
 
 pub struct InputFrame {
-    idx: usize,
-    width: usize,
-    height: usize,
+    pub idx: usize,
+    size: usize
+}
+
+impl InputFrame {
+
+    pub const fn new(frame_size: usize) -> Self {
+        Self {
+            idx: 0,
+            size: frame_size,
+        }
+    }
+
+    pub fn get_size(&self) -> usize { self.size }
+
 }
 
 pub trait InputToBuffer {
 
-    pub fn write_from_input();
+    fn write_from_input();
 
 }

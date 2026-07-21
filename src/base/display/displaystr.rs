@@ -1,5 +1,5 @@
 use crate::base::text::sysstr::{self, SysStr};
-use crate::drivers::display::{ForegroundColor, BackgroundColor};
+use crate::drivers::display_old::{ForegroundColor, BackgroundColor};
 
 use core::ops::{Deref, DerefMut};
 

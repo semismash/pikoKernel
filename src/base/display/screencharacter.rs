@@ -1,8 +1,8 @@
 #[derive(Debug, Clone, Copy)]
 #[repr(C, align(2))]
 pub struct ScreenCharacter {
-    ascii_char: u8,
-    attribute: u8,
+    pub ascii_char: u8,
+    pub attribute: u8,
 }
 
 #[derive(Default, Debug, Clone, Copy)]
