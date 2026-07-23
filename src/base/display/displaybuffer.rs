@@ -1,6 +1,11 @@
 use core::{ascii::Char::{self, Null}, fmt::Display};
 
-use crate::{arch::i686::kbd::Key::P, base::{display::{displaybuffer::DisplayError::CursorError, screencharacter::ScreenCharacter}, text::{self, sysstr, textbuffer::{self, TextBuffer}}}};
+use crate::{
+    base::{
+        display::{displaybuffer::DisplayError::CursorError, screencharacter::ScreenCharacter}, 
+        text::{self, sysstr, textbuffer::{self, TextBuffer}}
+    }
+};
 
 pub struct DisplayBuffer<const W: usize, const H: usize> {
     pub buffer: TextBuffer<ScreenCharacter, {W * H}>,
@@ -97,5 +102,17 @@ impl<const W: usize, const H: usize> DisplayBuffer<W, H> {
 
     pub fn get_offset_row(&self) -> usize { row_of(self.offset) }
     pub fn get_offset_col(&self) -> usize { col_of(self.offset) }
+
+}
+
+unsafe impl textbuffer::AsPtr for DisplayBuffer {
+
+    fn as_ptr(&self) -> *const ScreenCharacter {
+        unsafe { self.buffer.get_ptr() }
+    }
+
+    fn as_mut_ptr(&mut self) -> *mut ScreenCharacter {
+        unsafe { self.buffer.get_mut_ptr() }
+    }
 
 }

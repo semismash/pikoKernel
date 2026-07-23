@@ -63,3 +63,10 @@ impl<T, const N: usize> TextBuffer<T, N> {
     pub const fn capacity(&self) -> usize { N }
 
 }
+
+pub unsafe trait AsPtr {
+
+    fn as_ptr(&self) -> *const T;
+    fn as_mut_ptr(&mut self) -> *mut T;
+
+}

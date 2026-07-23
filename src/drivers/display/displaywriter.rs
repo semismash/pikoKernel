@@ -1,8 +1,10 @@
-use crate::{arch::i686::vga::update_cursor, base::{
-    display::{
-        displaybuffer::{self, DisplayBuffer}, displayframe::{self, DisplayFrame, FlushableBuffer, FramePointer, LastTick}, displaystr::{self, DisplayString}, inputframe::{self, InputFrame, InputToBuffer}, screencharacter::{self,ScreenCharacter}, scroll::*, strparse::*,
-    }, text::sysstr::{self, SysStr, SysStrError}
-}};
+use crate::{arch::i686::vga::update_cursor, 
+    base::{
+        display::{
+            displaybuffer::{self, DisplayBuffer}, displayframe::{self, DisplayFrame, FlushableBuffer, FramePointer, LastTick}, displaystr::{self, DisplayString}, inputframe::{self, InputFrame, InputToBuffer}, screencharacter::{self,ScreenCharacter}, scroll::*, strparse::*,
+        }, text::{sysstr::{self, SysStr, SysStrError}, textbuffer::AsPtr}
+    }
+};
 use crate::drivers::display::cursor::CursorFn;
 use crate::arch::i686::vga;
 
@@ -13,6 +15,8 @@ pub const BUFFER_CAPACITY: usize = BUFFER_WIDTH * BUFFER_HEIGHT;
 const FLUSH_FRAME_WIDTH: usize = 80;
 const FLUSH_FRAME_HEIGHT: usize = 25;
 type FrameBuffer = [[u16; FLUSH_FRAME_WIDTH]; FLUSH_FRAME_HEIGHT];
+
+const DISPLAY_FRAME_PTR: FramePointer<u8> = FramePointer(vga::VGA_BUFFER_ADR);
 
 pub struct DisplayWriter {
     buffer: DisplayBuffer,
@@ -45,7 +49,7 @@ impl DisplayWriter {
         }
     }
 
-    pub fn write_char(&mut self, ch: ScreenCharacter) -> Result<(), DisplayWriterError> {
+    pub fn write_char(&mut self, ch: ScreenCharacter, is_auto_scroll: bool) -> Result<(), DisplayWriterError> {
         if self.buffer.offset < BUFFER_CAPACITY {
             unsafe {
                 if ch.ascii_char == 0x0Au8 {
@@ -54,10 +58,27 @@ impl DisplayWriter {
                     self.display_frame.idx = buf_offset;
                     self.input_frame.idx = buf_offset;
                     // add cursor updation
+                    if is_auto_scroll {
+
+                    }
                 } else {
-                    
+                    let char_ptr = self.buffer.as_mut_ptr();
+                    core::ptr::write(char_ptr.add(self.buffer.offset), char); // change use buffer abstraction
+                    self.buffer.offset += 1;
+                    let buf_offset = self.buffer.offset;
+                    self.buffer.cursor = buf_offset;
+                    self.input_frame.idx += 1;
+                    // update metadat and cursor
+                    if self.buffer.get_offset_col() == 0 {
+                        self.input_frame.idx = buf_offset;
+                        if is_auto_scroll {
+                            self.auto_scroll_down();
+                            //check update metadata
+                        }
+                    }
                 }
             }
+            Ok(())
         } else {
             Err(DisplayWriterError::WriteError)
         }
@@ -68,15 +89,43 @@ impl DisplayWriter {
     }
 
     pub fn clear(&mut self) {
-
+        unsafe {
+            let buf_ptr = self.buffer.as_mut_ptr() as *mut ScreenCharacter;
+            for i in 0..BUFFER_CAPACITY {
+                core::ptr::write(
+                    buf_ptr.add(i),
+                    ScreenCharacter { 
+                        ascii_char: 0x20, 
+                        attribute: 0x00 
+                    }
+                )
+            }
+        }
+        self.buffer.offset = 0;
+        self.buffer.cursor = 0;
+        self.input_frame.idx = 0;
     }
 
 }
 
 impl FlushableBuffer for DisplayWriter {
 
-    fn flush(&self, dst: FramePointer) {
-        
+    fn flush(&self, dst: FramePointer<u8>) {
+        unsafe {
+            let src_base = self.buffer.as_ptr() as *const u16;
+            let dst_base = dst.0 as *mut u16;
+            let frame_row = self.metadata.flush_frame_row;
+            let frame_col = self.metadata.flush_frame_col;
+            for i in 0..FLUSH_FRAME_HEIGHT {
+                let src_row_ptr = src_base.add((frame_row + i) * BUFFER_WIDTH + frame_col);
+                let dst_row_ptr = dst_base.add(i * FLUSH_FRAME_WIDTH);
+                for j in 0..FLUSH_FRAME_WIDTH {
+                    let value = core::ptr::read(src_row_ptr.add(j));
+                    core::ptr::write_volatile(dst_row_ptr.add(j), value);
+                }
+            }
+        }
+        self.flush_cursor();
     }
 
     fn get_last_tick(&mut self) -> &mut displayframe::LastTick { &mut self.last_tick }
