@@ -67,7 +67,7 @@ impl<const W: usize, const H: usize> DisplayBuffer<W, H> {
     pub fn clear(&mut self) {
         unsafe {
             let buf_ptr = self.buffer.get_mut_ptr();
-            core::ptr::write_bytes(buf_ptr, 0x00, BUFFER_LENGTH);
+            core::ptr::write_bytes(buf_ptr, 0x00, W * H);
         }
         self.cursor = 0;
         self.offset = 0;
@@ -102,6 +102,8 @@ impl<const W: usize, const H: usize> DisplayBuffer<W, H> {
 
     pub fn get_offset_row(&self) -> usize { row_of(self.offset) }
     pub fn get_offset_col(&self) -> usize { col_of(self.offset) }
+
+    pub fn calculate_offset(row: usize, col: usize) -> usize { row * W + col }
 
 }
 

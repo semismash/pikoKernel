@@ -25,7 +25,7 @@ pub struct DisplayWriter {
     input_frame: InputFrame,
     cursor_fn: CursorFn,
     last_tick: LastTick,
-    row_and_col_metadata: RowAndColMetadata,
+    metadata: RowAndColMetadata,
 }
 
 impl DisplayWriter {
@@ -45,7 +45,7 @@ impl DisplayWriter {
                 Some(update_cursor),
             ),
             last_tick: LastTick(0),
-            row_and_col_metadata: RowAndColMetadata::new(),
+            metadata: RowAndColMetadata::new(),
         }
     }
 
@@ -89,20 +89,7 @@ impl DisplayWriter {
     }
 
     pub fn clear(&mut self) {
-        unsafe {
-            let buf_ptr = self.buffer.as_mut_ptr() as *mut ScreenCharacter;
-            for i in 0..BUFFER_CAPACITY {
-                core::ptr::write(
-                    buf_ptr.add(i),
-                    ScreenCharacter { 
-                        ascii_char: 0x20, 
-                        attribute: 0x00 
-                    }
-                )
-            }
-        }
-        self.buffer.offset = 0;
-        self.buffer.cursor = 0;
+        self.buffer.clear();
         self.input_frame.idx = 0;
     }
 
@@ -139,7 +126,31 @@ impl FlushableBuffer for DisplayWriter {
 impl ScrollableBuffer for DisplayWriter {
 
     fn scroll(&mut self, dir: ScrollDirection) {
-        
+        let frame_row = DisplayBuffer::row_of(self.display_frame.idx);
+        let frame_col = DisplayBuffer::col_of(self.display_frame.idx);
+        match dir {
+            ScrollDirection::Up => {
+                if frame_row > 0 {
+                    self.display_frame.idx = DisplayBuffer::calculate_offset(frame_row - 1, frame_col);
+                }
+            },
+            ScrollDirection::Left => {
+                if frame_col > 0 {
+                    self.display_frame.idx = DisplayBuffer::calculate_offset(frame_row, frame_col - 1);
+                }
+            },
+            ScrollDirection::Down => {
+                if frame_row + FLUSH_FRAME_HEIGHT < BUFFER_HEIGHT {
+                    self.display_frame.idx = DisplayBuffer::calculate_offset(frame_row + 1, frame_col);
+                }
+            },
+            ScrollDirection::Right => {
+                if frame_col + FLUSH_FRAME_WIDTH < BUFFER_WIDTH {
+                    self.display_frame.idx = DisplayBuffer::calculate_offset(frame_row, frame_col + 1);
+                }
+            }
+        }
+        self.update_metadata(); // check
     }
 
     fn snap_to_cursor(&mut self, snap_row: bool, snap_col: bool) {
