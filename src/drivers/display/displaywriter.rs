@@ -57,9 +57,10 @@ impl DisplayWriter {
                     let buf_offset = self.buffer.offset;
                     self.display_frame.idx = buf_offset;
                     self.input_frame.idx = buf_offset;
-                    // add cursor updation
+                    self.update_metadata();
                     if is_auto_scroll {
-
+                        self.auto_scroll_down();
+                        self.update_metadata();
                     }
                 } else {
                     let char_ptr = self.buffer.as_mut_ptr();
@@ -68,12 +69,12 @@ impl DisplayWriter {
                     let buf_offset = self.buffer.offset;
                     self.buffer.cursor = buf_offset;
                     self.input_frame.idx += 1;
-                    // update metadat and cursor
+                    self.update_metadata();
                     if self.buffer.get_offset_col() == 0 {
                         self.input_frame.idx = buf_offset;
                         if is_auto_scroll {
                             self.auto_scroll_down();
-                            //check update metadata
+                            self.update_metadata();
                         }
                     }
                 }
@@ -91,6 +92,10 @@ impl DisplayWriter {
     pub fn clear(&mut self) {
         self.buffer.clear();
         self.input_frame.idx = 0;
+    }
+
+    pub fn update_metadata(&mut self) {
+        self.metadata = RowAndColMetadata::from_cur_values(&self);
     }
 
 }
@@ -154,15 +159,71 @@ impl ScrollableBuffer for DisplayWriter {
     }
 
     fn snap_to_cursor(&mut self, snap_row: bool, snap_col: bool) {
+        let (cursor_row, cursor_col, frame_row, frame_col) = 
+            (self.metadata.cursor_row, self.metadata.cursor_col, self.metadata.flush_frame_row, self.metadata.flush_frame_col);
         
+        let mut new_frame_row = frame_row;
+        let mut new_frame_col = frame_col;
+
+        //rows
+        if snap_row {
+            if cursor_row < SNAP_RELATIVE_HEIGHT as usize {
+                new_frame_row = 0;
+            } else if cursor_row + FLUSH_FRAME_HEIGHT > BUFFER_HEIGHT + SNAP_RELATIVE_HEIGHT as usize {
+                new_frame_row = BUFFER_HEIGHT - FLUSH_FRAME_HEIGHT;
+            } else {
+                new_frame_row = cursor_row - SNAP_RELATIVE_HEIGHT as usize;
+            }
+        }
+        if snap_col {
+            if cursor_col < SNAP_RELATIVE_WIDTH as usize {
+                new_frame_col = 0;
+            } else if cursor_col + FLUSH_FRAME_WIDTH > BUFFER_WIDTH + SNAP_RELATIVE_WIDTH as usize {
+                new_frame_col = BUFFER_WIDTH - FLUSH_FRAME_WIDTH;
+            } else {
+                new_frame_col = cursor_col - SNAP_RELATIVE_WIDTH as usize;
+            }
+        }
+
+        self.flush_frame_ptr = DisplayBuffer::calculate_offset(new_frame_row, new_frame_col);
     }
 
     fn try_snap_to_cursor(&mut self) {
+        let mut snap_row: bool = false;
+        let mut snap_col: bool = false; 
         
+        let frame_bottom = self.metadata.flush_frame_row + FLUSH_FRAME_HEIGHT;
+        let frame_right  = self.metadata.flush_frame_col + FLUSH_FRAME_WIDTH;
+
+        if self.metadata.cursor_row + 1 == self.metadata.flush_frame_row { // do + 1 on lhs to prevent underflow (smort)
+            self.scroll(ScrollDirection::Up);
+        } else if self.metadata.cursor_row == frame_bottom {
+            self.scroll(ScrollDirection::Down);
+        } else if self.metadata.cursor_row < self.metadata.flush_frame_row || self.metadata.cursor_row >= frame_bottom {
+            snap_row = true;
+        }
+
+        if self.metadata.cursor_col + 1 == self.metadata.flush_frame_col {
+            self.scroll(ScrollDirection::Left);
+        } else if self.metadata.cursor_col == frame_right {
+            self.scroll(ScrollDirection::Right);
+        } else if self.metadata.cursor_col < self.metadata.flush_frame_col || self.metadata.cursor_col >= frame_right {
+            snap_col = true;
+        }
+
+        if snap_row || snap_col {
+            self.snap_to_cursor(snap_row, snap_col);
+        }
     }
 
     fn auto_scroll_down(&mut self) {
-        
+        let cursor_row = self.metadata.cursor_row;
+        let frame_row = self.metadata.flush_frame_row;
+        let cursor_was_visible = cursor_row >= frame_row 
+            && cursor_row < frame_row + FLUSH_FRAME_HEIGHT;
+        if cursor_was_visible && cursor_row >= frame_row + FLUSH_FRAME_HEIGHT - 1 {
+            self.scroll(ScrollDirection::Down);
+        }
     }
 
 }
